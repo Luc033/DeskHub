@@ -1,0 +1,25 @@
+# docker-compose.prod.yml
+# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Sobrescreve o docker-compose.yml com configurações de produção:
+# - Backend: node direto (sem nodemon), sem volume de código
+# - Frontend: build estático servido por nginx
+# - Migrações aplicadas automaticamente no start
+
+services:
+  backend:
+    volumes:
+      # Remove o bind-mount de código — usa apenas o que foi copiado no build
+      - /app/node_modules
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+    command: ["sh", "-c", "npx prisma migrate deploy && npm start"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    volumes: []
+    environment:
+      NODE_ENV: production
