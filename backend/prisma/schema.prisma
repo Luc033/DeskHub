@@ -1,0 +1,165 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================= USUÁRIOS E SEGURANÇA =================
+
+model User {
+  id          String       @id @default(uuid())
+  name        String
+  email       String       @unique
+  password    String
+  role        String       @default("user") // 'admin' ou 'user'
+  avatar      String?      @db.Text // <--- NOVO CAMPO AQUI
+  
+  // Relações (O que pertence a este usuário)
+  attendances Attendance[] 
+  kpis        DailyKpi[]   
+  messages    Message[]
+  shortcuts   Shortcut[]
+  links       Link[]
+  emojis      Emoji[]
+  notes       Note[]
+  alerts      Alert[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("users")
+}
+
+// ================= GESTOR DE DADOS =================
+
+model Message {
+  id        String   @id @default(uuid())
+  topic     String
+  title     String
+  command   String?
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Shortcut {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  command   String?
+  createdAt DateTime @default(now())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Link {
+  id        String   @id @default(uuid())
+  title     String
+  url       String
+  command   String?
+  createdAt DateTime @default(now())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Emoji {
+  id        String   @id @default(uuid())
+  name      String
+  value     String
+  createdAt DateTime @default(now())
+  command   String?
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Attendance {
+  id          String    @id @default(uuid())
+  number      Int       @default(autoincrement())
+  type        String    
+  status      String    @default("in_progress")
+  ticket      String?
+  phone       String?
+  cnpj        String?
+  companyName String?
+  tratativa   String?   @db.Text
+  notes       String?   @db.Text
+  openedAt    DateTime  @default(now())
+  closedAt    DateTime?
+  descricao   String?
+  category    String    @default("Outros")
+  command     String?
+
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  category  String   @default("Geral")
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("notes")
+}
+
+model Alert {
+  id          String   @id @default(uuid())
+  title       String
+  description String   @db.Text
+  type        String   
+  status      String   @default("active") 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("alerts")
+}
+
+// ================= CONFIGURAÇÕES GLOBAIS E KPIs =================
+
+model SystemSetting {
+  id               String   @id @default("global_config")
+  defaultTratativa String?  @db.Text
+  defaultNotes     String?  @db.Text
+  sheetsWebhook    String?
+  sortAlpha        Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+}
+
+model AiSetting {
+  id           String   @id @default("ai_config")
+  apiKey       String?
+  model        String   @default("gemini-2.5-flash")
+  systemPrompt String?  @db.Text
+  updatedAt    DateTime @updatedAt
+}
+
+model DailyKpi {
+  id          String   @id @default(uuid())
+  date        DateTime @default(now()) @db.Date
+  missedCalls Int      @default(0)
+  pausesMins  Int      @default(0) 
+  updatedAt   DateTime @updatedAt
+
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date]) 
+}

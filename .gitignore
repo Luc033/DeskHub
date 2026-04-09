@@ -1,0 +1,8 @@
+# Backups do banco de dados
+backups/
+
+# Variáveis de ambiente
+.env
+
+# Node
+node_modules/
