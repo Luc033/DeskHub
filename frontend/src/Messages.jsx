@@ -4,6 +4,7 @@ import { Copy, Trash2, Pencil, Folder, CheckCircle2, MessageSquareText, X, Save 
 export default function Messages({ searchQuery, refreshKey }) {
   const [messages, setMessages] = useState([]);
   const [toast, setToast] = useState(null);
+  const [categories, setCategories] = useState([]);
   
   // Novo estado para controlar a edição
   const [editingItem, setEditingItem] = useState(null); 
@@ -20,8 +21,6 @@ useEffect(() => {
         return res.json();
       })
       .then(data => {
-        // Se a API retornar sucesso E for um Array válido, salva as mensagens.
-        // Se a API retornar lixo ou HTML (por causa de erro), salva um array vazio!
         if (Array.isArray(data)) {
           setMessages(data);
         } else {
@@ -30,8 +29,13 @@ useEffect(() => {
       })
       .catch(err => {
         console.error("Erro ao buscar mensagens:", err);
-        setMessages([]); // Previne o temido erro "filter is not a function"
+        setMessages([]);
       });
+
+    fetch('/api/categories')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => { if (Array.isArray(data)) setCategories(data); })
+      .catch(() => {});
   }, [refreshKey]);
 
   // Função para Deletar
@@ -117,7 +121,12 @@ useEffect(() => {
             <form onSubmit={handleUpdate} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5 dark:text-slate-300">Categoria / Tópico</label>
-                <input required value={editingItem.topic} onChange={e => setEditingItem({...editingItem, topic: e.target.value})} className="w-full bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200" />
+                <select required value={editingItem.topic} onChange={e => setEditingItem({...editingItem, topic: e.target.value})} className="w-full bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200">
+                  <option value="">Selecione uma categoria...</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5 dark:text-slate-300">Título da Mensagem</label>

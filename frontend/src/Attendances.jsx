@@ -109,6 +109,7 @@ export default function Attendances() {
   });
 
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [dynamicCategories, setDynamicCategories] = useState([]);
 
   const CATEGORY_STYLES = {
     Fiscal: {
@@ -152,6 +153,8 @@ export default function Attendances() {
       border: "border-slate-200 dark:border-slate-600",
     },
   };
+
+
 
   const [hubData, setHubData] = useState({
     messages: [],
@@ -235,6 +238,11 @@ export default function Attendances() {
     ]).then(([messages, shortcuts, links, emojis]) =>
       setHubData({ messages, shortcuts, links, emojis }),
     );
+
+    fetch('/api/categories')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => { if (Array.isArray(data)) setDynamicCategories(data); })
+      .catch(() => {});
 
     // Sincroniza a tratativa padrão do banco com o LocalStorage logo ao abrir a tela
     fetch(`/api/settings/system`)
@@ -904,7 +912,7 @@ export default function Attendances() {
                       e.stopPropagation();
                       setIsCategoryMenuOpen((prev) => !prev);
                     }}
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black border shadow-sm cursor-pointer transition-all hover:opacity-80 ${CATEGORY_STYLES[form.category || "Outros"].bg} ${CATEGORY_STYLES[form.category || "Outros"].text} ${CATEGORY_STYLES[form.category || "Outros"].border}`}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black border shadow-sm cursor-pointer transition-all hover:opacity-80 ${(CATEGORY_STYLES[form.category || "Outros"] || CATEGORY_STYLES["Outros"]).bg} ${(CATEGORY_STYLES[form.category || "Outros"] || CATEGORY_STYLES["Outros"]).text} ${(CATEGORY_STYLES[form.category || "Outros"] || CATEGORY_STYLES["Outros"]).border}`}
                     title={`Categoria: ${form.category || "Outros"}`}
                   >
                     {(form.category || "Outros").charAt(0).toUpperCase()}
@@ -1310,9 +1318,8 @@ export default function Attendances() {
               </select>
               {quickAddForm.type === "messages" && (
                 <div className="space-y-3">
-                  <input
+                  <select
                     required
-                    placeholder="Categoria"
                     value={quickAddForm.topic}
                     onChange={(e) =>
                       setQuickAddForm((prev) => ({
@@ -1321,7 +1328,12 @@ export default function Attendances() {
                       }))
                     }
                     className="w-full bg-slate-50 border px-4 py-2.5 rounded-xl outline-none focus:border-[#175676] dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:focus:border-[#1FA697]"
-                  />
+                  >
+                    <option value="">Selecione uma categoria...</option>
+                    {dynamicCategories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
                   <input
                     placeholder="Comando (opcional, ex: bomdia)"                    
                     value={quickAddForm.command || ""}

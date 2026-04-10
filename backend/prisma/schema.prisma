@@ -26,6 +26,7 @@ model User {
   emojis      Emoji[]
   notes       Note[]
   alerts      Alert[]
+  categories  Category[]
 
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -130,6 +131,18 @@ model Alert {
   user      User?    @relation(fields: [userId], references: [id])
 
   @@map("alerts")
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, name])
+  @@map("categories")
 }
 
 // ================= CONFIGURAÇÕES GLOBAIS E KPIs =================

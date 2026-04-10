@@ -12,6 +12,7 @@ const NfeController = require('../controllers/NfeController');
 const NoteController = require('../controllers/NoteController');
 const AlertController = require('../controllers/AlertController');
 const AuthController = require('../controllers/AuthController');
+const CategoryController = require('../controllers/CategoryController');
 
 // O nosso Porteiro
 const authMiddleware = require('../middlewares/auth');
@@ -72,6 +73,12 @@ routes.get('/attendances', AttendanceController.index);
 routes.put('/attendances/:id/finalize', AttendanceController.finalize);
 routes.delete('/attendances/:id', AttendanceController.delete);
 routes.put('/attendances/:id', AttendanceController.update);
+
+// Categorias
+routes.get('/categories', CategoryController.index);
+routes.post('/categories', CategoryController.create);
+routes.put('/categories/:id', CategoryController.update);
+routes.delete('/categories/:id', CategoryController.delete);
 
 // KPIs
 routes.post('/kpis', KpiController.register);

@@ -3,7 +3,7 @@ import {
   Headphones, LineChart, Settings, MapPin, FileText,
   MessageSquare, Route, Link as LinkIcon, Smile, ChevronDown,
   PlusCircle, Search, X, CheckCircle2, LogOut, Moon, Sun,
-  BookOpen, Bell, AlertTriangle, Info, AlarmClock, Megaphone, Terminal
+  BookOpen, Bell, AlertTriangle, Info, AlarmClock, Megaphone, Terminal, Tags
 } from "lucide-react";
 
 import logo from "./assets/logo.ico";
@@ -11,6 +11,7 @@ import Messages from "./Messages";
 import Shortcuts from "./Shortcuts";
 import Links from "./Links";
 import Emojis from "./Emojis";
+import Categories from "./Categories";
 import Attendances from "./Attendances";
 import Cep from "./Cep";
 import SettingsPage from "./Settings";
@@ -45,6 +46,23 @@ function App() {
   const [hubForm, setHubForm] = useState({
     type: "messages", topic: "", title: "", content: "", url: "", name: "", value: "",
   });
+
+  const [hubCategories, setHubCategories] = useState([]);
+
+  // Busca de categorias
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch("/api/categories");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) setHubCategories(data);
+      }
+    } catch (error) {
+      console.error("Falha ao buscar categorias:", error);
+    }
+  };
+
+  useEffect(() => { fetchCategories(); }, [hubRefreshKey]);
 
   // Busca de alertas
   const fetchAlerts = async () => {
@@ -134,6 +152,9 @@ function App() {
     } else if (hubForm.type === "emojis") {
       endpoint = "/emojis";
       payload = { name: hubForm.name, value: hubForm.value };
+    } else if (hubForm.type === "categories") {
+      endpoint = "/categories";
+      payload = { name: hubForm.name };
     }
 
     try {
@@ -213,6 +234,7 @@ function App() {
     { name: "Rotas", key: "routes", icon: Route },
     { name: "Links", key: "links", icon: LinkIcon },
     { name: "Emojis", key: "emojis", icon: Smile },
+    { name: "Categorias", key: "categories", icon: Tags },
   ];
 
   const getAlertIcon = (type, size = 16) => {
@@ -346,7 +368,12 @@ function App() {
                 <>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Categoria / Topico</label>
-                    <input required placeholder="Ex: Suporte, Financeiro..." value={hubForm.topic} onChange={(e) => setHubForm((p) => ({ ...p, topic: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm dark:text-slate-200" />
+                    <select required value={hubForm.topic} onChange={(e) => setHubForm((p) => ({ ...p, topic: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm dark:text-slate-200">
+                      <option value="">Selecione uma categoria...</option>
+                      {hubCategories.map((cat) => (
+                        <option key={cat.id} value={cat.name}>{cat.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Titulo</label>
@@ -391,6 +418,14 @@ function App() {
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Valor ou Codigo</label>
                     <input required placeholder="Ex: joinha ou :thumbsup:" value={hubForm.value} onChange={(e) => setHubForm((p) => ({ ...p, value: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm font-mono dark:text-slate-200" />
+                  </div>
+                </>
+              )}
+              {hubForm.type === "categories" && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">Nome da Categoria</label>
+                    <input required placeholder="Ex: Suporte, Financeiro, Fiscal..." value={hubForm.name} onChange={(e) => setHubForm((p) => ({ ...p, name: e.target.value }))} className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2.5 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-sm dark:text-slate-200" />
                   </div>
                 </>
               )}
@@ -548,6 +583,7 @@ function App() {
           {activeMainTab === "hub" && activeHubSubTab === "routes" && <Shortcuts searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
           {activeMainTab === "hub" && activeHubSubTab === "links" && <Links searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
           {activeMainTab === "hub" && activeHubSubTab === "emojis" && <Emojis searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
+          {activeMainTab === "hub" && activeHubSubTab === "categories" && <Categories searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
           {activeMainTab === "cep" && <Cep />}
           {activeMainTab === "atendimentos" && <Attendances />}
           {activeMainTab === "settings" && <SettingsPage />}
