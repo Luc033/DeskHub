@@ -202,9 +202,14 @@ module.exports = {
         return res.status(400).json({ error: 'Avatar é obrigatório' });
       }
 
+      // Validar que é um data URI de imagem válido e limitar tamanho (~3MB em base64)
+      if (!avatar.startsWith('data:image/') || avatar.length > 3 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Avatar inválido. Envie uma imagem de até 2MB.' });
+      }
+
       const updatedUser = await prisma.user.update({
         where: { id: req.userId },
-        data: { avatar: String(avatar).slice(0, 500) }
+        data: { avatar }
       });
 
       const { password: _, ...userWithoutPassword } = updatedUser;

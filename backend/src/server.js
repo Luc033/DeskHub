@@ -38,8 +38,8 @@ app.use(limiterGlobal);
 
 app.use(cors(securityConfig.getCorsConfig()));
 
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ limit: '2mb', extended: true }));
+app.use(express.json({ limit: '4mb' }));
+app.use(express.urlencoded({ limit: '4mb', extended: true }));
 
 app.use(routes);
 
