@@ -272,7 +272,7 @@ export default function Attendances() {
 
     const timer = setTimeout(async () => {
       try {
-        showToast("IA analisando a categoria...");
+        showToast("Analisando a categoria...");
         const res = await fetch(`/api/ai/categorize`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -281,15 +281,20 @@ export default function Attendances() {
 
         const data = await res.json();
 
+        if (data.error) {
+          showToast(`Erro: ${data.error}`);
+          return;
+        }
+
         if (CATEGORY_STYLES[data.category]) {
           setForm((prev) => {
             if (prev.category === data.category) return prev;
             return { ...prev, category: data.category };
           });
-          showToast(`IA classificou como: ${data.category}`);
+          showToast(`${data.provider || 'IA'} classificou como: ${data.category}`);
         }
       } catch (e) {
-        console.error("Erro na API do Gemini:", e);
+        console.error("Erro ao categorizar atendimento:", e);
       }
     }, 1500);
 
@@ -382,13 +387,11 @@ export default function Attendances() {
     };
   }, [form, isModalOpen, editingId, localTab]);
 
-  // Sincroniza Pausas e Ligações Perdidas com o Banco de Dados (com Debounce de 1 seg para não travar a API)
   useEffect(() => {
     localStorage.setItem("my_missed_calls", missedCalls);
     localStorage.setItem("my_pauses", pauses);
 
     const syncTimeout = setTimeout(() => {
-      // Converte a string "HH:MM" para minutos inteiros pro banco
       const [h, m] = (pauses || "00:00").split(":").map(Number);
       const pausesMins = (h || 0) * 60 + (m || 0);
 
@@ -406,10 +409,9 @@ export default function Attendances() {
   }, [missedCalls, pauses]);
 
   const handleOpenNew = () => {
-    // Busca SEMPRE a versão mais recente salva no LocalStorage (ou default)
     const currentDefault =
       localStorage.getItem("my_default_tratativa") ||
-      "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...";
+      "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...\n\n\n\nEspero que tenha gostado do atendimento.\n\nQualquer coisa estamos à disposição.";
 
     setForm({
       ticket: "#",
@@ -532,7 +534,7 @@ export default function Attendances() {
     if (e) e.stopPropagation();
     if (
       window.confirm(
-        "Meu Grande Mestre, tem certeza que deseja apagar este registo para sempre?",
+        "Tem certeza que deseja apagar este registo para sempre?",
       )
     ) {
       try {
@@ -548,7 +550,6 @@ export default function Attendances() {
   const filteredAttendances = attendances.filter((a) => {
     if (a.type !== localTab) return false;
     
-    // Pega a data em que o atendimento foi aberto/criado
     const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
     if (!dateVal) return false;
     
@@ -565,7 +566,7 @@ export default function Attendances() {
   const handleDeleteAll = async () => {
     if (
       window.confirm(
-        "CUIDADO: Deseja excluir permanentemente TODOS os atendimentos listados nesta aba?",
+        "CUIDADO: Deseja excluir permanentemente TODOS os atendimentos nesta aba?",
       )
     ) {
       for (const att of filteredAttendances) {
@@ -577,7 +578,7 @@ export default function Attendances() {
       }
       const idsToRemove = filteredAttendances.map((a) => a.id);
       setAttendances(attendances.filter((a) => !idsToRemove.includes(a.id)));
-      showToast("Todos os registros visíveis foram apagados!");
+      showToast("Todos os registros foram apagados!");
     }
   };
 
@@ -1322,7 +1323,7 @@ export default function Attendances() {
                     className="w-full bg-slate-50 border px-4 py-2.5 rounded-xl outline-none focus:border-[#175676] dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:focus:border-[#1FA697]"
                   />
                   <input
-                    placeholder="Comando (opcional, ex: bomdia)"
+                    placeholder="Comando (opcional, ex: bomdia)"                    
                     value={quickAddForm.command || ""}
                     onChange={(e) =>
                       setQuickAddForm((prev) => ({

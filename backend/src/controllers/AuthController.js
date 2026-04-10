@@ -82,11 +82,10 @@ module.exports = {
         return res.status(401).json({ error: 'Email ou senha incorretos' });
       }
 
-      // ✅ Tokens curtos
       const token = jwt.sign(
         { id: user.id, role: user.role },
         SECRET,
-        { expiresIn: '15m' }
+        { expiresIn: '9h' }
       );
 
       const refreshToken = jwt.sign(

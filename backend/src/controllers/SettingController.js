@@ -36,9 +36,15 @@ module.exports = {
     try {
       let config = await prisma.aiSetting.findUnique({ where: { id: 'ai_config' } });
       if (!config) config = await prisma.aiSetting.create({ data: { id: 'ai_config' } });
-      // ✅ SEGURANÇA: Não expor a API key completa
-      const { apiKey, ...safeConfig } = config;
-      return res.json({ ...safeConfig, apiKey: apiKey ? '***configured***' : '' });
+      return res.json({
+        id: config.id,
+        model: config.model,
+        systemPrompt: config.systemPrompt,
+        updatedAt: config.updatedAt,
+        geminiKey: config.apiKey ? '***configured***' : '',
+        openaiKey: config.openaiKey ? '***configured***' : '',
+        groqKey: config.groqKey ? '***configured***' : '',
+      });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao buscar configs da IA' });
     }
@@ -46,9 +52,19 @@ module.exports = {
 
   async updateAi(req, res) {
     try {
-      const { apiKey, model, systemPrompt } = req.body;
+      const { geminiKey, openaiKey, groqKey, model, systemPrompt } = req.body;
       const data = {};
-      if (apiKey !== undefined) data.apiKey = String(apiKey).slice(0, 200);
+
+      // Só atualiza chaves que o usuário realmente digitou (não o placeholder)
+      if (geminiKey && geminiKey !== '***configured***') {
+        data.apiKey = String(geminiKey).slice(0, 200);
+      }
+      if (openaiKey && openaiKey !== '***configured***') {
+        data.openaiKey = String(openaiKey).slice(0, 200);
+      }
+      if (groqKey && groqKey !== '***configured***') {
+        data.groqKey = String(groqKey).slice(0, 200);
+      }
       if (model !== undefined) data.model = String(model).slice(0, 50);
       if (systemPrompt !== undefined) data.systemPrompt = String(systemPrompt).slice(0, 2000);
 
@@ -57,8 +73,15 @@ module.exports = {
         update: data,
         create: { id: 'ai_config', ...data }
       });
-      const { apiKey: key, ...safeConfig } = config;
-      return res.json({ ...safeConfig, apiKey: key ? '***configured***' : '' });
+      return res.json({
+        id: config.id,
+        model: config.model,
+        systemPrompt: config.systemPrompt,
+        updatedAt: config.updatedAt,
+        geminiKey: config.apiKey ? '***configured***' : '',
+        openaiKey: config.openaiKey ? '***configured***' : '',
+        groqKey: config.groqKey ? '***configured***' : '',
+      });
     } catch (error) {
       return res.status(500).json({ error: 'Erro ao atualizar configs da IA' });
     }

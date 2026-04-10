@@ -13,7 +13,7 @@ import {
   AlertCircle,
   Upload,
   Users,
-  Trash2, // Novos ícones importados
+  Trash2,
 } from "lucide-react";
 import { AuthContext } from "./contexts/AuthContext";
 
@@ -41,7 +41,7 @@ export default function Settings() {
   const [profileForm, setProfileForm] = useState({
     name: user?.name || "",
     email: user?.email || "",
-    avatar: user?.avatar || null, // <--- Adicione isso
+    avatar: user?.avatar || null,
   });
   const [passwordForm, setPasswordForm] = useState({
     current: "",
@@ -50,8 +50,12 @@ export default function Settings() {
   });
 
   const [aiSettings, setAiSettings] = useState({
-    apiKey: "",
-    model: "gemini-2.5-flash",
+    geminiKey: "",
+    openaiKey: "",
+    groqKey: "",
+    geminiConfigured: false,
+    openaiConfigured: false,
+    groqConfigured: false,
     systemPrompt: "",
   });
   const [newUserForm, setNewUserForm] = useState({
@@ -61,7 +65,6 @@ export default function Settings() {
     role: "user",
   });
 
-  // Estado para armazenar a lista de usuários (Admin)
   const [usersList, setUsersList] = useState([]);
 
   // ================= FETCH INICIAL =================
@@ -93,14 +96,17 @@ export default function Settings() {
         .then((res) => res.json())
         .then((data) => {
           setAiSettings({
-            apiKey: data.apiKey || "",
-            model: data.model || "gemini-2.5-flash",
+            geminiKey: "",
+            openaiKey: "",
+            groqKey: "",
+            geminiConfigured: data.geminiKey === '***configured***',
+            openaiConfigured: data.openaiKey === '***configured***',
+            groqConfigured: data.groqKey === '***configured***',
             systemPrompt: data.systemPrompt || "",
           });
         })
         .catch((err) => console.error(err));
 
-      // Busca a lista de usuários assim que a tela abre
       fetchUsers();
     }
   }, [isAdmin]);
@@ -126,12 +132,31 @@ export default function Settings() {
   const handleSaveAiSettings = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        systemPrompt: aiSettings.systemPrompt,
+      };
+      if (aiSettings.geminiKey) payload.geminiKey = aiSettings.geminiKey;
+      if (aiSettings.openaiKey) payload.openaiKey = aiSettings.openaiKey;
+      if (aiSettings.groqKey) payload.groqKey = aiSettings.groqKey;
+
       const res = await fetch("/api/settings/ai", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(aiSettings),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) showToast("Configurações da IA atualizadas no banco!");
+      if (res.ok) {
+        const data = await res.json();
+        setAiSettings(prev => ({
+          ...prev,
+          geminiKey: "",
+          openaiKey: "",
+          groqKey: "",
+          geminiConfigured: data.geminiKey === '***configured***',
+          openaiConfigured: data.openaiKey === '***configured***',
+          groqConfigured: data.groqKey === '***configured***',
+        }));
+        showToast("Configurações da IA atualizadas!");
+      }
     } catch (err) {
       showToast("Erro ao salvar configurações da IA.");
     }
@@ -174,7 +199,6 @@ export default function Settings() {
 
     setProfileError("");
 
-    // Lê a imagem e converte para Base64
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64String = reader.result;
@@ -188,11 +212,9 @@ export default function Settings() {
 
         if (!res.ok) throw new Error("Erro ao salvar imagem");
 
-        // Atualiza a imagem na tela de configurações na hora
         setProfileForm((prev) => ({ ...prev, avatar: base64String }));
         showToast("Foto de perfil atualizada!");
 
-        // Força um reload suave para o Context e o Header pegarem a nova foto
         setTimeout(() => window.location.reload(), 1500);
       } catch (err) {
         setProfileError("Falha ao enviar a imagem para o servidor.");
@@ -278,7 +300,7 @@ export default function Settings() {
 
       showToast(`Usuário ${newUserForm.name} criado com sucesso!`);
       setNewUserForm({ name: "", email: "", password: "", role: "user" });
-      fetchUsers(); // Atualiza a lista!
+      fetchUsers();
     } catch (error) {
       setUserError(error.message);
     }
@@ -590,37 +612,65 @@ export default function Settings() {
               <div className="border-b border-slate-200 pb-3 mb-6 dark:border-slate-700 flex items-center gap-2">
                 <Bot className="text-[#6A2C70] dark:text-[#d8a1de]" />
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                  Google AI Studio (Gemini)
+                  Inteligência Artificial — Multi-Provider
                 </h3>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                Prioridade: <strong>Gemini</strong> → <strong>ChatGPT</strong> → <strong>Llama (Groq)</strong>. Se o Gemini estiver indisponível, o sistema tenta automaticamente o próximo provider.
+              </p>
               <form
                 onSubmit={handleSaveAiSettings}
                 className="space-y-5 w-full"
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Gemini */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-green-700 dark:text-green-400 flex items-center gap-1">
+                    Gemini (Google) — Prioridade
+                    {aiSettings.geminiConfigured && <span className="text-[10px] bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 px-2 py-0.5 rounded-full">configurada</span>}
+                  </label>
                   <input
                     type="password"
-                    placeholder="API Key: AIzaSy..."
-                    value={aiSettings.apiKey}
-                    onChange={(e) =>
-                      setAiSettings({ ...aiSettings, apiKey: e.target.value })
-                    }
+                    placeholder={aiSettings.geminiConfigured ? "••••••••  (chave já configurada)" : "API Key Gemini: AIzaSy..."}
+                    value={aiSettings.geminiKey}
+                    onChange={(e) => setAiSettings({ ...aiSettings, geminiKey: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl outline-none dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200"
                   />
-                  <select
-                    value={aiSettings.model}
-                    onChange={(e) =>
-                      setAiSettings({ ...aiSettings, model: e.target.value })
-                    }
-                    className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl outline-none dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200"
-                  >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                  </select>
                 </div>
+
+                {/* ChatGPT */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                    ChatGPT (OpenAI) — Fallback 1
+                    {aiSettings.openaiConfigured && <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2 py-0.5 rounded-full">configurada</span>}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={aiSettings.openaiConfigured ? "••••••••  (chave já configurada)" : "API Key OpenAI: sk-..."}
+                    value={aiSettings.openaiKey}
+                    onChange={(e) => setAiSettings({ ...aiSettings, openaiKey: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl outline-none dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200"
+                  />
+                </div>
+
+                {/* Groq / Llama */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                    Llama (Groq) — Fallback 2
+                    {aiSettings.groqConfigured && <span className="text-[10px] bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 px-2 py-0.5 rounded-full">configurada</span>}
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={aiSettings.groqConfigured ? "••••••••  (chave já configurada)" : "API Key Groq: gsk_..."}
+                    value={aiSettings.groqKey}
+                    onChange={(e) => setAiSettings({ ...aiSettings, groqKey: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl outline-none dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200"
+                  />
+                </div>
+
+                {/* System Prompt */}
                 <textarea
                   rows="5"
-                  placeholder="Prompt do Sistema..."
+                  placeholder="Prompt do Sistema (usado por todos os providers)..."
                   value={aiSettings.systemPrompt}
                   onChange={(e) =>
                     setAiSettings({

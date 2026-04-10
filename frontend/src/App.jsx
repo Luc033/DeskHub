@@ -573,8 +573,8 @@ function App() {
       {activeMainTab !== "settings" && (
         <footer className="h-8 shrink-0 bg-slate-900 flex items-center overflow-hidden z-40 relative w-full dark:bg-[#0a0a0a] dark:border-t dark:border-slate-800">
           <div className="h-full bg-slate-800 px-4 flex items-center gap-2 z-10 shrink-0 border-r border-slate-700 dark:bg-[#111] dark:border-slate-800">
+            <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest dark:text-emerald-500">V3.1.0</span>
             <Terminal size={14} className="text-emerald-400 dark:text-emerald-500" />
-            <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-widest dark:text-emerald-500">V3.0.1</span>
           </div>
           <div className="flex-1 px-4 h-full flex items-center font-mono text-[11px] font-medium tracking-tight text-slate-300 dark:text-slate-400">
             {displayedAlert ? (

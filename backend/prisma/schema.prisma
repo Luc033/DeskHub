@@ -145,7 +145,9 @@ model SystemSetting {
 
 model AiSetting {
   id           String   @id @default("ai_config")
-  apiKey       String?
+  apiKey       String?  // Gemini API Key (prioridade)
+  openaiKey    String?  // OpenAI/ChatGPT API Key (fallback 1)
+  groqKey      String?  // Groq/Llama API Key (fallback 2)
   model        String   @default("gemini-2.5-flash")
   systemPrompt String?  @db.Text
   updatedAt    DateTime @updatedAt

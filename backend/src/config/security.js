@@ -19,10 +19,10 @@ module.exports = {
         message: 'Muitas requisições, tente novamente mais tarde'
       },
       auth: {
-        windowMs: 15 * 60 * 1000,
-        max: 5,
+        windowMs: 30 * 1000, // 30 segundos
+        max: 10,
         skipSuccessfulRequests: true,
-        message: 'Muitas tentativas, tente novamente em 15 minutos'
+        message: 'Muitas tentativas, tente novamente em 30 segundos'
       }
     };
   },
