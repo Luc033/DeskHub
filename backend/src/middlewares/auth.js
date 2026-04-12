@@ -4,7 +4,6 @@ const logger = require('../utils/logger');
 const SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.REFRESH_SECRET;
 
-// ✅ Validar que as chaves foram configuradas
 if (!SECRET || !REFRESH_SECRET) {
   throw new Error('JWT_SECRET e REFRESH_SECRET não configurados!');
 }

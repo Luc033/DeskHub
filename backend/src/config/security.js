@@ -16,13 +16,17 @@ module.exports = {
       global: {
         windowMs: 15 * 60 * 1000, // 15 minutos
         max: 100,
-        message: 'Muitas requisições, tente novamente mais tarde'
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: 'Muitas requisições, tente novamente mais tarde' }
       },
       auth: {
         windowMs: 30 * 1000, // 30 segundos
         max: 10,
         skipSuccessfulRequests: true,
-        message: 'Muitas tentativas, tente novamente em 30 segundos'
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: 'Muitas tentativas, tente novamente em 30 segundos' }
       }
     };
   },

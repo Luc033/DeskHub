@@ -38,7 +38,12 @@ export function AuthProvider({ children }) {
       body: JSON.stringify({ email, password })
     });
     
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error('Servidor indisponível. Tente novamente em alguns segundos.');
+    }
     
     if (!res.ok) throw new Error(data.error || 'Erro ao fazer login');
 

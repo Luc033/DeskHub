@@ -131,9 +131,6 @@ export default function Categories({ searchQuery, refreshKey }) {
           <div key={cat.id} className="bg-white p-4 rounded-2xl border border-slate-200 hover:border-emerald-500/30 shadow-sm hover:shadow-md transition-all group flex items-center justify-between relative overflow-hidden dark:bg-slate-800 dark:border-slate-700 dark:hover:border-emerald-500/50">
             <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="flex items-center gap-3 pl-1 min-w-0">
-              <div className="w-8 h-8 bg-emerald-50 text-emerald-700 rounded-lg flex items-center justify-center text-sm font-black border border-emerald-200 shrink-0 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
-                {cat.name.charAt(0).toUpperCase()}
-              </div>
               <span className="text-sm font-bold text-slate-700 truncate dark:text-slate-200">{cat.name}</span>
             </div>
             <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">

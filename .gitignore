@@ -6,3 +6,7 @@ backups/
 
 # Node
 node_modules/
+
+report
+
+.vscode
