@@ -153,8 +153,14 @@ export default function Kpi() {
   const monthData = useMemo(() => buildMonthData(selectedYear, selectedMonth, attendances, kpis, feriadosNacionais), [selectedYear, selectedMonth, attendances, kpis, feriadosNacionais]);
 
   const weeklyData = useMemo(() => {
-    return monthData.filter(d => d.semana === selectedWeek);
-  }, [monthData, selectedWeek]);
+    const filtered = monthData.filter(d => d.semana === selectedWeek);
+    // Ordenar os dias começando no domingo (jsDayOfWeek 0 = Domingo)
+    return filtered.sort((a, b) => {
+      const dayA = new Date(selectedYear, selectedMonth, parseInt(a.dataStr.split('/')[0])).getDay();
+      const dayB = new Date(selectedYear, selectedMonth, parseInt(b.dataStr.split('/')[0])).getDay();
+      return dayA - dayB;
+    });
+  }, [monthData, selectedWeek, selectedYear, selectedMonth]);
 
   const monthlyGroupedData = useMemo(() => {
     const grouped = [];
@@ -203,7 +209,7 @@ export default function Kpi() {
   const metaDiariaTickets = diaSimulado.isDiaUtil ? 3 : 0;
   const metaDiariaLigacoes = diaSimulado.isDiaUtil ? 25 : 0;
   const saldoAteOntem = diaSimulado.saldoAcumuladoTickets - (diaSimulado.ticketsAtendidos - metaDiariaTickets);
-  const metaTicketsHoje = Math.max(0, metaDiariaTickets - saldoAteOntem);
+  const metaTicketsHoje = Math.max(0, metaDiariaTickets - saldoAteOntem - diaSimulado.ticketsAtendidos);
   const precisaDeTicketsHoje = metaTicketsHoje > 0;
   const faltamLigacoes = diaSimulado.isDiaUtil ? Math.max(0, metaDiariaLigacoes - diaSimulado.ligacoesAtendidas) : 0;
 
