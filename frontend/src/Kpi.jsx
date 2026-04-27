@@ -6,6 +6,14 @@ import { LayoutDashboard, Calendar, CalendarDays, PhoneCall, Ticket, Coffee, Act
 
 const API_URL = '/api';
 
+const getISOWeek = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+};
+
 const formatTime = (hoursFloat) => {
   const h = Math.floor(hoursFloat);
   const m = Math.round((hoursFloat - h) * 60);
@@ -31,6 +39,9 @@ const buildMonthData = (year, monthIndex, attendances, kpis, feriadosArray) => {
   const data = [];
   const diasDaSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
   let saldoAcumuladoTickets = 0;
+
+  const firstDayOfMonth = new Date(year, monthIndex, 1);
+  const firstWeek = getISOWeek(firstDayOfMonth);
 
   // Mapa rápido de dados agrupados por dia (YYYY-MM-DD)
   const dataMap = {};
@@ -65,7 +76,7 @@ const buildMonthData = (year, monthIndex, attendances, kpis, feriadosArray) => {
     const jsDayOfWeek = currentDate.getDay(); // 0 = Dom, 6 = Sab
     const dStr = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const dataStr = `${String(day).padStart(2,'0')}/${String(monthIndex+1).padStart(2,'0')}`;
-    const weekNum = Math.ceil(day / 7);
+    const weekNum = getISOWeek(currentDate) - firstWeek + 1;
 
     const isFimDeSemana = (jsDayOfWeek === 0 || jsDayOfWeek === 6);
     const isFeriado = feriadosArray.includes(dataStr);
@@ -103,7 +114,7 @@ export default function Kpi() {
   const hoje = new Date();
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth();
-  const semanaAtual = Math.min(5, Math.ceil(hoje.getDate() / 7));
+  const semanaAtual = getISOWeek(hoje) - getISOWeek(new Date(anoAtual, mesAtual, 1)) + 1;
 
   const [viewMode, setViewMode] = useState('mensal'); 
   const [selectedYear, setSelectedYear] = useState(anoAtual);
@@ -114,25 +125,17 @@ export default function Kpi() {
   const [kpis, setKpis] = useState([]);
   const [feriadosNacionais, setFeriadosNacionais] = useState([]);
 
+  const anosDisponiveis = useMemo(() => Array.from({ length: 5 }, (_, i) => anoAtual - 2 + i), [anoAtual]);
+
+  const monthData = useMemo(() => buildMonthData(selectedYear, selectedMonth, attendances, kpis, feriadosNacionais), [selectedYear, selectedMonth, attendances, kpis, feriadosNacionais]);
+
+  const availableWeeks = useMemo(() => [...new Set(monthData.map(d => d.semana))].sort((a,b)=>a-b), [monthData]);
+
   useEffect(() => {
-    const fetchFeriados = async () => {
-      try {
-        const response = await fetch(`https://brasilapi.com.br/api/feriados/v1/${selectedYear}`);
-        if(response.ok) {
-           const data = await response.json();
-           const formattedHolidays = data.map(feriado => {
-              const [y, m, d] = feriado.date.split('-');
-              return `${d}/${m}`;
-           });
-           setFeriadosNacionais(formattedHolidays);
-        }
-      } catch (err) {
-        console.error("Falha ao buscar Feriados. Usando lista de backup.");
-        setFeriadosNacionais(['01/01', '21/04', '01/05', '07/09', '12/10', '02/11', '15/11', '25/12']);
-      }
-    };
-    fetchFeriados();
-  }, [selectedYear]);
+    if (availableWeeks.length > 0 && !availableWeeks.includes(selectedWeek)) {
+      setSelectedWeek(availableWeeks[0]);
+    }
+  }, [availableWeeks, selectedWeek]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -148,19 +151,11 @@ export default function Kpi() {
     fetchData();
   }, []);
 
-  const anosDisponiveis = useMemo(() => Array.from({ length: 5 }, (_, i) => anoAtual - 2 + i), [anoAtual]);
-
-  const monthData = useMemo(() => buildMonthData(selectedYear, selectedMonth, attendances, kpis, feriadosNacionais), [selectedYear, selectedMonth, attendances, kpis, feriadosNacionais]);
-
   const weeklyData = useMemo(() => {
     const filtered = monthData.filter(d => d.semana === selectedWeek);
-    // Ordenar os dias começando no domingo (jsDayOfWeek 0 = Domingo)
-    return filtered.sort((a, b) => {
-      const dayA = new Date(selectedYear, selectedMonth, parseInt(a.dataStr.split('/')[0])).getDay();
-      const dayB = new Date(selectedYear, selectedMonth, parseInt(b.dataStr.split('/')[0])).getDay();
-      return dayA - dayB;
-    });
-  }, [monthData, selectedWeek, selectedYear, selectedMonth]);
+    // Ordenar os dias pela data
+    return filtered.sort((a, b) => parseInt(a.dataStr.split('/')[0]) - parseInt(b.dataStr.split('/')[0]));
+  }, [monthData, selectedWeek]);
 
   const monthlyGroupedData = useMemo(() => {
     const grouped = [];
@@ -254,7 +249,7 @@ export default function Kpi() {
               <div className="flex items-center gap-2 px-2">
                 <CalendarDays size={18} className="text-slate-400" />
                 <select className="bg-transparent text-sm font-medium text-slate-700 outline-none cursor-pointer dark:text-slate-300 dark:bg-slate-900" value={selectedWeek} onChange={(e) => setSelectedWeek(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((sem) => <option key={sem} value={sem}>Semana {sem}</option>)}
+                  {availableWeeks.map((sem) => <option key={sem} value={sem}>Semana {sem}</option>)}
                 </select>
               </div>
             </>
@@ -360,7 +355,7 @@ export default function Kpi() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={weeklyData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="dataStr" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                     
                     {/* YAxis com domain manual para as linhas de Meta não cortarem */}
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} domain={[0, dataMax => Math.max(30, dataMax + 5)]} />
@@ -385,7 +380,7 @@ export default function Kpi() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={weeklyData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="dataStr" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                     <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${val}h`} tick={{ fill: '#64748b' }} domain={[0, dataMax => Math.max(3, dataMax + 0.5)]} />
                     <Tooltip formatter={(value) => [formatTime(value), 'Pausa']} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }} />
                     <ReferenceLine y={2.5} stroke={colors.pausas} strokeDasharray="3 3" label={{ position: 'top', value: 'Limite (2.5h)', fill: colors.pausas, fontSize: 10 }} />
@@ -402,7 +397,7 @@ export default function Kpi() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={weeklyData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="dataStr" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                     <YAxis domain={[80, 100]} axisLine={false} tickLine={false} unit="%" tick={{ fill: '#64748b' }} />
                     <Tooltip formatter={(v) => [`${v}%`, 'Taxa']} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }} />
                     <ReferenceLine y={94} stroke={colors.taxa} strokeDasharray="3 3" label={{ position: 'top', value: 'Meta (94%)', fill: colors.taxa, fontSize: 10 }} />
