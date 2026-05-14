@@ -20,6 +20,8 @@ import {
   Zap,
   Search,
   CheckSquare,
+  Undo,
+  Redo,
 } from "lucide-react";
 import { useAutocomplete } from "./useAutocomplete";
 import AutocompletePopover from "./AutocompletePopover";
@@ -165,6 +167,7 @@ export default function Attendances() {
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [dropdownSearch, setDropdownSearch] = useState("");
   const tratativaRef = useRef(null);
+  const notesRef = useRef(null);
   const { popup, listRef, confirmItem, handleChange, handleKeyDown, close } =
     useAutocomplete({
       textareaRef: tratativaRef,
@@ -555,15 +558,35 @@ export default function Attendances() {
     }
   };
 
+  const getLocalDateString = (dateValue) => {
+    if (!dateValue) return "";
+    const date = new Date(dateValue);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+
+  const currentLocalDateString = getLocalDateString(new Date());
+
+  const todaysAttendancesCount = attendances.filter((a) => {
+    if (a.type !== "phone") return false;
+    const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
+    return getLocalDateString(dateVal) === currentLocalDateString;
+  }).length;
+
+  const todaysTicketsCount = attendances.filter((a) => {
+    if (a.type !== "ticket") return false;
+    const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
+    return getLocalDateString(dateVal) === currentLocalDateString;
+  }).length;
+
   const filteredAttendances = attendances.filter((a) => {
     if (a.type !== localTab) return false;
-    
+
     const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
     if (!dateVal) return false;
-    
+
     const d = new Date(dateVal);
-    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
     return dStr === selectedDate;
   });
 
@@ -744,7 +767,7 @@ export default function Attendances() {
               className="text-[#175676] dark:text-[#1FA697]"
             />
             <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {attendances.filter((a) => a.type === "phone").length}
+              {todaysAttendancesCount}
             </span>
           </div>
         </div>
@@ -755,7 +778,7 @@ export default function Attendances() {
           <div className="flex items-center gap-2 mt-auto">
             <Ticket size={20} className="text-[#175676] dark:text-[#1FA697]" />
             <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {attendances.filter((a) => a.type === "ticket").length}
+              {todaysTicketsCount}
             </span>
           </div>
         </div>
@@ -841,7 +864,7 @@ export default function Attendances() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
           <input
             type="date"
             value={selectedDate}
@@ -1188,19 +1211,43 @@ export default function Attendances() {
                       />{" "}
                       Tratativa Final
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm((prev) => ({
-                          ...prev,
-                          tratativa: defaultTratativa,
-                        }));
-                        showToast("Tratativa redefinida!");
-                      }}
-                      className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                    >
-                      <Eraser size={14} /> Limpar
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          tratativaRef.current.focus();
+                          document.execCommand('undo');
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Desfazer"
+                      >
+                        <Undo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          tratativaRef.current.focus();
+                          document.execCommand('redo');
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Refazer"
+                      >
+                        <Redo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((prev) => ({
+                            ...prev,
+                            tratativa: defaultTratativa,
+                          }));
+                          showToast("Tratativa redefinida!");
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                      >
+                        <Eraser size={14} /> Limpar
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     ref={tratativaRef}
@@ -1237,18 +1284,43 @@ export default function Attendances() {
                       />{" "}
                       Anotações Internas
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm((prev) => ({ ...prev, notes: "" }));
-                        showToast("Anotações limpas!");
-                      }}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
-                    >
-                      <Eraser size={14} /> Limpar
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          notesRef.current.focus();
+                          document.execCommand('undo');
+                        }}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
+                        title="Desfazer"
+                      >
+                        <Undo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          notesRef.current.focus();
+                          document.execCommand('redo');
+                        }}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
+                        title="Refazer"
+                      >
+                        <Redo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((prev) => ({ ...prev, notes: "" }));
+                          showToast("Anotações limpas!");
+                        }}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
+                      >
+                        <Eraser size={14} /> Limpar
+                      </button>
+                    </div>
                   </div>
                   <textarea
+                    ref={notesRef}
                     value={form.notes}
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, notes: e.target.value }))
