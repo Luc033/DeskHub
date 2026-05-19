@@ -206,11 +206,12 @@ export default function Kpi() {
 
   const monthlyAverages = useMemo(() => {
     if (monthlyGroupedData.length === 0) {
-      return { avgLigacoes: 0, avgTickets: 0, avgPausas: 0 };
+      return { avgLigacoes: 0, avgTickets: 0, avgPausas: 0, avgTaxaAtendimento: 0 };
     }
     const ligacoesWeeks = monthlyGroupedData.filter(curr => curr.ligacoesAtendidas > 0);
     const ticketsWeeks = monthlyGroupedData.filter(curr => curr.ticketsAtendidos > 0);
     const pausasWeeks = monthlyGroupedData.filter(curr => curr.pausas > 0);
+    const taxaWeeks = monthlyGroupedData.filter(curr => curr.taxaAtendimento > 0);
 
     const avgLigacoes = ligacoesWeeks.length > 0
       ? parseFloat((ligacoesWeeks.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0) / ligacoesWeeks.length).toFixed(1))
@@ -221,8 +222,11 @@ export default function Kpi() {
     const avgPausas = pausasWeeks.length > 0
       ? parseFloat((pausasWeeks.reduce((acc, curr) => acc + curr.pausas, 0) / pausasWeeks.length).toFixed(2))
       : 0;
+    const avgTaxaAtendimento = taxaWeeks.length > 0
+      ? parseFloat((taxaWeeks.reduce((acc, curr) => acc + curr.taxaAtendimento, 0) / taxaWeeks.length).toFixed(1))
+      : 0;
 
-    return { avgLigacoes, avgTickets, avgPausas };
+    return { avgLigacoes, avgTickets, avgPausas, avgTaxaAtendimento };
   }, [monthlyGroupedData]);
 
   const weeklyAverages = useMemo(() => {
@@ -282,10 +286,13 @@ export default function Kpi() {
   };
 
   const renderWeeklyXAxisTick = ({ x, y, payload }) => {
-    const isToday = typeof payload.value === 'string' && payload.value.endsWith(diaDeHojeStr);
+    const tickValue = typeof payload.value === 'string' ? payload.value : String(payload.value);
+    const [dayPart, datePart] = tickValue.split(' ');
+    const isToday = datePart === diaDeHojeStr;
     return (
-      <text x={x} y={y + 16} textAnchor="middle" fill={isToday ? colors.taxa : '#64748b'} fontSize={12}>
-        {payload.value}
+      <text x={x} y={y + 12} textAnchor="middle" fill={isToday ? colors.taxa : '#64748b'} fontSize={12}>
+        <tspan x={x} dy={0}>{dayPart}</tspan>
+        <tspan x={x} dy={14}>{datePart}</tspan>
       </text>
     );
   };
@@ -400,26 +407,29 @@ export default function Kpi() {
                    <div className="w-3 h-3 border border-slate-400 bg-slate-400/20 rounded-sm" style={{ borderStyle: 'dashed' }}></div> Meta / Limite
                 </div>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3 text-xs text-slate-500 dark:text-slate-400">
+              <div className="mt-3 grid gap-2 sm:grid-cols-4 text-xs text-slate-500 dark:text-slate-400">
                 <span>Média Ligações: {monthlyAverages.avgLigacoes}</span>
                 <span>Média Tickets: {monthlyAverages.avgTickets}</span>
                 <span>Média Pausas: {formatHoursMinutes(monthlyAverages.avgPausas)}</span>
+                <span>Média Taxa: {monthlyAverages.avgTaxaAtendimento}%</span>
               </div>
             </div>
 
             <div className="h-[500px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyGroupedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart data={monthlyGroupedData} margin={{ top: 10, right: 50, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
                   <XAxis dataKey="nome" axisLine={false} tickLine={false} tick={renderMonthXAxisTick} />
                   <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                   <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#f59e0b' }} tickFormatter={(val) => `${val}h`} />
+                  <YAxis yAxisId="taxa" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#10b981' }} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
                   
                   <Tooltip 
                     cursor={{fill: 'rgba(148, 163, 184, 0.05)'}}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }}
                     formatter={(value, name) => {
                       if (name.includes("Pausas")) return [formatTime(value), name];
+                      if (name.includes("Taxa")) return [`${value}%`, name];
                       return [value, name];
                     }}
                   />
@@ -436,6 +446,10 @@ export default function Kpi() {
                   {/* PAUSAS: Realizado vs Meta (Eixo Direito) */}
                   <Bar yAxisId="right" dataKey="pausas" name="Tempo Pausas" fill={colors.pausas} radius={[4, 4, 0, 0]} barSize={25} />
                   <Bar yAxisId="right" dataKey="metaPausas" name="Limite Pausas" fill={colors.pausas} fillOpacity={0.2} stroke={colors.pausas} strokeDasharray="3 3" radius={[4, 4, 0, 0]} barSize={25} />
+
+                  {/* TAXA DE ATENDIMENTO: Realizado e Meta (Eixo Taxa) */}
+                  <ReferenceLine yAxisId="taxa" y={94} stroke={colors.taxa} strokeDasharray="3 3" label={{ position: 'top', value: 'Meta (94%)', fill: colors.taxa, fontSize: 10 }} />
+                  <Line yAxisId="taxa" type="monotone" dataKey="taxaAtendimento" name="% Atendimento" stroke={colors.taxa} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
