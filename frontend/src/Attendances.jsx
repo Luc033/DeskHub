@@ -1417,43 +1417,7 @@ export default function Attendances() {
                       />{" "}
                       Anotações Internas
                     </label>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={handleCallExtension}
-                        className="text-xs font-bold text-[#1FA697] hover:text-white hover:bg-[#1FA697] px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 border border-[#1FA697]/40 hover:border-[#1FA697] dark:text-[#1FA697] dark:hover:bg-[#1FA697] dark:hover:text-white"
-                        title="Consultar SmartGuide — a resposta será inserida aqui"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                        SmartGuide
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleNotesUndo}
-                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
-                        title="Desfazer"
-                      >
-                        <Undo size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleNotesRedo}
-                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
-                        title="Refazer"
-                      >
-                        <Redo size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForm((prev) => ({ ...prev, notes: "" }));
-                          showToast("Anotações limpas!");
-                        }}
-                        className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
-                      >
-                        <Eraser size={14} /> Limpar
-                      </button>
-                    </div>
+                  
                   </div>
                   <textarea
                     id="anotacoes-textarea"
