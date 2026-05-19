@@ -168,6 +168,10 @@ export default function Attendances() {
   const [dropdownSearch, setDropdownSearch] = useState("");
   const tratativaRef = useRef(null);
   const notesRef = useRef(null);
+  const tratativaUndoStack = useRef([]);
+  const tratativaRedoStack = useRef([]);
+  const notesUndoStack = useRef([]);
+  const notesRedoStack = useRef([]);
   const { popup, listRef, confirmItem, handleChange, handleKeyDown, close } =
     useAutocomplete({
       textareaRef: tratativaRef,
@@ -183,6 +187,63 @@ export default function Attendances() {
       },
     });
   const [cursorPos, setCursorPos] = useState({ start: 0, end: 0 });
+
+  const pushStack = (stackRef, value) => {
+    stackRef.current.push(value);
+    if (stackRef.current.length > 100) stackRef.current.shift();
+  };
+
+  const handleTratativaUndo = () => {
+    const prevValue = tratativaUndoStack.current.pop();
+    if (prevValue === undefined) return;
+    tratativaRedoStack.current.push(form.tratativa);
+    setForm((prev) => ({ ...prev, tratativa: prevValue }));
+    requestAnimationFrame(() => {
+      if (tratativaRef.current) {
+        tratativaRef.current.focus();
+        tratativaRef.current.setSelectionRange(prevValue.length, prevValue.length);
+      }
+    });
+  };
+
+  const handleTratativaRedo = () => {
+    const nextValue = tratativaRedoStack.current.pop();
+    if (nextValue === undefined) return;
+    tratativaUndoStack.current.push(form.tratativa);
+    setForm((prev) => ({ ...prev, tratativa: nextValue }));
+    requestAnimationFrame(() => {
+      if (tratativaRef.current) {
+        tratativaRef.current.focus();
+        tratativaRef.current.setSelectionRange(nextValue.length, nextValue.length);
+      }
+    });
+  };
+
+  const handleNotesUndo = () => {
+    const prevValue = notesUndoStack.current.pop();
+    if (prevValue === undefined) return;
+    notesRedoStack.current.push(form.notes);
+    setForm((prev) => ({ ...prev, notes: prevValue }));
+    requestAnimationFrame(() => {
+      if (notesRef.current) {
+        notesRef.current.focus();
+        notesRef.current.setSelectionRange(prevValue.length, prevValue.length);
+      }
+    });
+  };
+
+  const handleNotesRedo = () => {
+    const nextValue = notesRedoStack.current.pop();
+    if (nextValue === undefined) return;
+    notesUndoStack.current.push(form.notes);
+    setForm((prev) => ({ ...prev, notes: nextValue }));
+    requestAnimationFrame(() => {
+      if (notesRef.current) {
+        notesRef.current.focus();
+        notesRef.current.setSelectionRange(nextValue.length, nextValue.length);
+      }
+    });
+  };
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({
@@ -220,6 +281,40 @@ export default function Attendances() {
     } catch (err) {}
     document.body.removeChild(textArea);
   };
+
+  // ================= COMUNICAÇÃO COM EXTENSÃO =================
+  const handleCallExtension = () => {
+    // O content script da extensão (content_deskhub.js) escuta eventos
+    // window.postMessage com type === "DESKHUB_REQUEST" na mesma janela.
+    // Não é possível acessar chrome.runtime diretamente da página React —
+    // esse objeto só existe dentro do próprio content script.
+    // A ponte correta é sempre via window.postMessage → content script.
+    window.postMessage({ type: "DESKHUB_REQUEST" }, "*");
+  };
+
+  // Listener para mensagens da extensão
+  useEffect(() => {
+    const handleExtensionMessage = (event) => {
+      // Aceita apenas mensagens da mesma janela (não de iframes)
+      if (event.source !== window) return;
+      // Guard: event.data pode ser nulo em algumas extensões de terceiros
+      if (!event.data || typeof event.data !== "object") return;
+
+      const { type, data } = event.data;
+
+      if (type === "EXTENSION_RESPONSE") {
+        if (data?.success) {
+          showToast("Dados recebidos da extensão!");
+          console.log("Dados da extensão:", data);
+        } else {
+          showToast(`Erro da extensão: ${data?.message}`);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleExtensionMessage);
+    return () => window.removeEventListener("message", handleExtensionMessage);
+  }, []);
 
   useEffect(() => {
     fetch(`/api/attendances`)
@@ -642,6 +737,18 @@ export default function Attendances() {
       end: e.target.selectionEnd,
     });
 
+  const handleTratativaChange = (value) => {
+    pushStack(tratativaUndoStack, form.tratativa);
+    tratativaRedoStack.current = [];
+    setForm((prev) => ({ ...prev, tratativa: value }));
+  };
+
+  const handleNotesChange = (value) => {
+    pushStack(notesUndoStack, form.notes);
+    notesRedoStack.current = [];
+    setForm((prev) => ({ ...prev, notes: value }));
+  };
+
   const handleInsertShortcut = (contentToInsert) => {
     copyToClipboard(contentToInsert, false);
     showToast("Copiado e Inserido!");
@@ -652,6 +759,8 @@ export default function Attendances() {
 
     const newText =
       text.substring(0, start) + contentToInsert + text.substring(end);
+    pushStack(tratativaUndoStack, form.tratativa);
+    tratativaRedoStack.current = [];
     setForm((prev) => ({ ...prev, tratativa: newText }));
 
     const newPos = start + contentToInsert.length;
@@ -1214,10 +1323,39 @@ export default function Attendances() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          tratativaRef.current.focus();
-                          document.execCommand('undo');
-                        }}
+                        onClick={handleCallExtension}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Conectar com Extensão"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="20"
+                          height="20"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          className="text-current"
+                        >
+                          <g clipPath="url(#clip0_deskhub_extension)">
+                            <path
+                              d="M8 3.5C5.23833 3.5 3 5.72 3 8.45917V10.8333H3.92167V10.5967C3.92167 9.48583 4.82917 8.585 5.94917 8.585C7.06917 8.585 7.97667 9.48583 7.97667 10.5967V10.8333H8.89833V10.5967C8.89833 8.98083 7.5775 7.67167 5.94917 7.67167C5.315 7.67167 4.7275 7.87 4.24667 8.20833C4.75 7.21583 5.78667 6.535 6.98333 6.535C8.67417 6.535 10.045 7.895 10.045 9.57167V10.8333H10.9667V9.57167C10.9667 7.39 9.18333 5.62083 6.98333 5.62083C5.99417 5.62083 5.08917 5.97833 4.3925 6.57083C5.07667 5.28833 6.435 4.41417 8 4.41417C10.2525 4.41417 12.0783 6.225 12.0783 8.45917V10.8333H13V8.45917C13 5.72 10.7617 3.5 8 3.5Z"
+                              fill="currentColor"
+                            />
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_deskhub_extension">
+                              <rect
+                                width="10"
+                                height="7.33333"
+                                fill="white"
+                                transform="translate(3 3.5)"
+                              />
+                            </clipPath>
+                          </defs>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTratativaUndo}
                         className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                         title="Desfazer"
                       >
@@ -1225,10 +1363,7 @@ export default function Attendances() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          tratativaRef.current.focus();
-                          document.execCommand('redo');
-                        }}
+                        onClick={handleTratativaRedo}
                         className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
                         title="Refazer"
                       >
@@ -1250,14 +1385,12 @@ export default function Attendances() {
                     </div>
                   </div>
                   <textarea
+                    id="tratativa-textarea"
                     ref={tratativaRef}
                     required
                     value={form.tratativa}
                     onChange={(e) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        tratativa: e.target.value,
-                      }));
+                      handleTratativaChange(e.target.value);
                       handleTextareaState(e);
                       handleChange(e);
                     }}
@@ -1287,10 +1420,16 @@ export default function Attendances() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          notesRef.current.focus();
-                          document.execCommand('undo');
-                        }}
+                        onClick={handleCallExtension}
+                        className="text-xs font-bold text-[#1FA697] hover:text-white hover:bg-[#1FA697] px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 border border-[#1FA697]/40 hover:border-[#1FA697] dark:text-[#1FA697] dark:hover:bg-[#1FA697] dark:hover:text-white"
+                        title="Consultar SmartGuide — a resposta será inserida aqui"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        SmartGuide
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNotesUndo}
                         className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
                         title="Desfazer"
                       >
@@ -1298,10 +1437,7 @@ export default function Attendances() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          notesRef.current.focus();
-                          document.execCommand('redo');
-                        }}
+                        onClick={handleNotesRedo}
                         className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
                         title="Refazer"
                       >
@@ -1320,11 +1456,10 @@ export default function Attendances() {
                     </div>
                   </div>
                   <textarea
+                    id="anotacoes-textarea"
                     ref={notesRef}
                     value={form.notes}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, notes: e.target.value }))
-                    }
+                    onChange={(e) => handleNotesChange(e.target.value)}
                     placeholder="Notas privadas..."
                     className="flex-1 w-full bg-transparent px-5 py-4 outline-none resize-none whitespace-pre-wrap leading-relaxed text-sm text-slate-700 selection:bg-amber-300 selection:text-amber-900 dark:text-slate-200 dark:selection:bg-[#C9A02A]/60 dark:selection:text-[#F2C94C]"
                   ></textarea>
