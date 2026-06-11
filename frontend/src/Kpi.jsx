@@ -211,7 +211,24 @@ export default function Kpi() {
     const ligacoesWeeks = monthlyGroupedData.filter(curr => curr.ligacoesAtendidas > 0);
     const ticketsWeeks = monthlyGroupedData.filter(curr => curr.ticketsAtendidos > 0);
     const pausasWeeks = monthlyGroupedData.filter(curr => curr.pausas > 0);
-    const taxaWeeks = monthlyGroupedData.filter(curr => curr.taxaAtendimento > 0);
+
+    // Calcula a taxa de atendimento corretamente: soma todas as atendidas e perdidas do mês
+    const totalAtendidas = monthlyGroupedData.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0);
+    const totalPerdidas = monthlyGroupedData.reduce((acc, curr) => acc + (monthData
+      .filter(d => d.semana === monthlyGroupedData.indexOf(curr) + 1)
+      .reduce((acc2, d) => acc2 + d.ligacoesPerdidas, 0)), 0);
+    
+    // Versão melhorada: somar ligações perdidas por semana
+    const totalPerdidasPorSemana = monthlyGroupedData.map((week, idx) => {
+      const semanaNum = idx + 1;
+      return monthData
+        .filter(d => d.semana === semanaNum)
+        .reduce((acc, d) => acc + d.ligacoesPerdidas, 0);
+    }).reduce((acc, val) => acc + val, 0);
+
+    const avgTaxaAtendimento = totalAtendidas > 0 
+      ? parseFloat(((totalAtendidas / (totalAtendidas + totalPerdidasPorSemana)) * 100).toFixed(1))
+      : 0;
 
     const avgLigacoes = ligacoesWeeks.length > 0
       ? parseFloat((ligacoesWeeks.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0) / ligacoesWeeks.length).toFixed(1))
@@ -222,12 +239,9 @@ export default function Kpi() {
     const avgPausas = pausasWeeks.length > 0
       ? parseFloat((pausasWeeks.reduce((acc, curr) => acc + curr.pausas, 0) / pausasWeeks.length).toFixed(2))
       : 0;
-    const avgTaxaAtendimento = taxaWeeks.length > 0
-      ? parseFloat((taxaWeeks.reduce((acc, curr) => acc + curr.taxaAtendimento, 0) / taxaWeeks.length).toFixed(1))
-      : 0;
 
     return { avgLigacoes, avgTickets, avgPausas, avgTaxaAtendimento };
-  }, [monthlyGroupedData]);
+  }, [monthlyGroupedData, monthData]);
 
   const weeklyAverages = useMemo(() => {
     if (weeklyData.length === 0) {
@@ -237,7 +251,13 @@ export default function Kpi() {
     const ligacoesDays = weeklyData.filter(curr => curr.ligacoesAtendidas > 0);
     const ticketsDays = weeklyData.filter(curr => curr.ticketsAtendidos > 0);
     const pausasDays = weeklyData.filter(curr => curr.pausas > 0);
-    const taxaDays = weeklyData.filter(curr => curr.taxaAtendimento > 0);
+
+    // Calcula a taxa de atendimento corretamente: total atendidas / total (atendidas + perdidas)
+    const totalAtendidas = weeklyData.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0);
+    const totalPerdidas = weeklyData.reduce((acc, curr) => acc + curr.ligacoesPerdidas, 0);
+    const taxaAtendimentoCorreta = totalAtendidas > 0 
+      ? parseFloat(((totalAtendidas / (totalAtendidas + totalPerdidas)) * 100).toFixed(1))
+      : 0;
 
     return {
       ligacoesAtendidas: ligacoesDays.length > 0
@@ -249,9 +269,7 @@ export default function Kpi() {
       pausas: pausasDays.length > 0
         ? parseFloat((pausasDays.reduce((acc, curr) => acc + curr.pausas, 0) / pausasDays.length).toFixed(2))
         : 0,
-      taxaAtendimento: taxaDays.length > 0
-        ? parseFloat((taxaDays.reduce((acc, curr) => acc + curr.taxaAtendimento, 0) / taxaDays.length).toFixed(1))
-        : 0,
+      taxaAtendimento: taxaAtendimentoCorreta,
     };
   }, [weeklyData]);
 
