@@ -6,10 +6,34 @@ import { LayoutDashboard, Calendar, CalendarDays, PhoneCall, Ticket, Coffee, Act
 
 const API_URL = '/api';
 
+const getISOWeek = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+};
+
 const formatTime = (hoursFloat) => {
   const h = Math.floor(hoursFloat);
   const m = Math.round((hoursFloat - h) * 60);
   return `${h}h ${m}m`;
+};
+
+const formatHoursMinutes = (hoursFloat) => {
+  const h = Math.floor(hoursFloat);
+  const m = Math.round((hoursFloat - h) * 60);
+  return `${h}h${String(m).padStart(2, '0')}`;
+};
+
+const dayAbbreviations = {
+  Domingo: 'Dom',
+  Segunda: 'Seg',
+  Terça: 'Ter',
+  Quarta: 'Qua',
+  Quinta: 'Qui',
+  Sexta: 'Sex',
+  Sábado: 'Sáb'
 };
 
 const meses = [
@@ -31,6 +55,9 @@ const buildMonthData = (year, monthIndex, attendances, kpis, feriadosArray) => {
   const data = [];
   const diasDaSemana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
   let saldoAcumuladoTickets = 0;
+
+  const firstDayOfMonth = new Date(year, monthIndex, 1);
+  const firstWeek = getISOWeek(firstDayOfMonth);
 
   // Mapa rápido de dados agrupados por dia (YYYY-MM-DD)
   const dataMap = {};
@@ -65,7 +92,7 @@ const buildMonthData = (year, monthIndex, attendances, kpis, feriadosArray) => {
     const jsDayOfWeek = currentDate.getDay(); // 0 = Dom, 6 = Sab
     const dStr = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const dataStr = `${String(day).padStart(2,'0')}/${String(monthIndex+1).padStart(2,'0')}`;
-    const weekNum = Math.ceil(day / 7);
+    const weekNum = getISOWeek(currentDate) - firstWeek + 1;
 
     const isFimDeSemana = (jsDayOfWeek === 0 || jsDayOfWeek === 6);
     const isFeriado = feriadosArray.includes(dataStr);
@@ -103,7 +130,7 @@ export default function Kpi() {
   const hoje = new Date();
   const anoAtual = hoje.getFullYear();
   const mesAtual = hoje.getMonth();
-  const semanaAtual = Math.min(5, Math.ceil(hoje.getDate() / 7));
+  const semanaAtual = getISOWeek(hoje) - getISOWeek(new Date(anoAtual, mesAtual, 1)) + 1;
 
   const [viewMode, setViewMode] = useState('mensal'); 
   const [selectedYear, setSelectedYear] = useState(anoAtual);
@@ -114,25 +141,17 @@ export default function Kpi() {
   const [kpis, setKpis] = useState([]);
   const [feriadosNacionais, setFeriadosNacionais] = useState([]);
 
+  const anosDisponiveis = useMemo(() => Array.from({ length: 5 }, (_, i) => anoAtual - 2 + i), [anoAtual]);
+
+  const monthData = useMemo(() => buildMonthData(selectedYear, selectedMonth, attendances, kpis, feriadosNacionais), [selectedYear, selectedMonth, attendances, kpis, feriadosNacionais]);
+
+  const availableWeeks = useMemo(() => [...new Set(monthData.map(d => d.semana))].sort((a,b)=>a-b), [monthData]);
+
   useEffect(() => {
-    const fetchFeriados = async () => {
-      try {
-        const response = await fetch(`https://brasilapi.com.br/api/feriados/v1/${selectedYear}`);
-        if(response.ok) {
-           const data = await response.json();
-           const formattedHolidays = data.map(feriado => {
-              const [y, m, d] = feriado.date.split('-');
-              return `${d}/${m}`;
-           });
-           setFeriadosNacionais(formattedHolidays);
-        }
-      } catch (err) {
-        console.error("Falha ao buscar Feriados. Usando lista de backup.");
-        setFeriadosNacionais(['01/01', '21/04', '01/05', '07/09', '12/10', '02/11', '15/11', '25/12']);
-      }
-    };
-    fetchFeriados();
-  }, [selectedYear]);
+    if (availableWeeks.length > 0 && !availableWeeks.includes(selectedWeek)) {
+      setSelectedWeek(availableWeeks[0]);
+    }
+  }, [availableWeeks, selectedWeek]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -148,12 +167,16 @@ export default function Kpi() {
     fetchData();
   }, []);
 
-  const anosDisponiveis = useMemo(() => Array.from({ length: 5 }, (_, i) => anoAtual - 2 + i), [anoAtual]);
-
-  const monthData = useMemo(() => buildMonthData(selectedYear, selectedMonth, attendances, kpis, feriadosNacionais), [selectedYear, selectedMonth, attendances, kpis, feriadosNacionais]);
-
   const weeklyData = useMemo(() => {
-    return monthData.filter(d => d.semana === selectedWeek);
+    const filtered = monthData
+      .filter(d => d.semana === selectedWeek)
+      .map(d => ({
+        ...d,
+        xAxisLabel: `${dayAbbreviations[d.dia] || d.dia.slice(0, 3)}. ${d.dataStr}`
+      }));
+
+    // Ordenar os dias pela data
+    return filtered.sort((a, b) => parseInt(a.dataStr.split('/')[0]) - parseInt(b.dataStr.split('/')[0]));
   }, [monthData, selectedWeek]);
 
   const monthlyGroupedData = useMemo(() => {
@@ -181,6 +204,75 @@ export default function Kpi() {
     return grouped;
   }, [monthData]);
 
+  const monthlyAverages = useMemo(() => {
+    if (monthlyGroupedData.length === 0) {
+      return { avgLigacoes: 0, avgTickets: 0, avgPausas: 0, avgTaxaAtendimento: 0 };
+    }
+    const ligacoesWeeks = monthlyGroupedData.filter(curr => curr.ligacoesAtendidas > 0);
+    const ticketsWeeks = monthlyGroupedData.filter(curr => curr.ticketsAtendidos > 0);
+    const pausasWeeks = monthlyGroupedData.filter(curr => curr.pausas > 0);
+
+    // Calcula a taxa de atendimento corretamente: soma todas as atendidas e perdidas do mês
+    const totalAtendidas = monthlyGroupedData.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0);
+    const totalPerdidas = monthlyGroupedData.reduce((acc, curr) => acc + (monthData
+      .filter(d => d.semana === monthlyGroupedData.indexOf(curr) + 1)
+      .reduce((acc2, d) => acc2 + d.ligacoesPerdidas, 0)), 0);
+    
+    // Versão melhorada: somar ligações perdidas por semana
+    const totalPerdidasPorSemana = monthlyGroupedData.map((week, idx) => {
+      const semanaNum = idx + 1;
+      return monthData
+        .filter(d => d.semana === semanaNum)
+        .reduce((acc, d) => acc + d.ligacoesPerdidas, 0);
+    }).reduce((acc, val) => acc + val, 0);
+
+    const avgTaxaAtendimento = totalAtendidas > 0 
+      ? parseFloat(((totalAtendidas / (totalAtendidas + totalPerdidasPorSemana)) * 100).toFixed(1))
+      : 0;
+
+    const avgLigacoes = ligacoesWeeks.length > 0
+      ? parseFloat((ligacoesWeeks.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0) / ligacoesWeeks.length).toFixed(1))
+      : 0;
+    const avgTickets = ticketsWeeks.length > 0
+      ? parseFloat((ticketsWeeks.reduce((acc, curr) => acc + curr.ticketsAtendidos, 0) / ticketsWeeks.length).toFixed(1))
+      : 0;
+    const avgPausas = pausasWeeks.length > 0
+      ? parseFloat((pausasWeeks.reduce((acc, curr) => acc + curr.pausas, 0) / pausasWeeks.length).toFixed(2))
+      : 0;
+
+    return { avgLigacoes, avgTickets, avgPausas, avgTaxaAtendimento };
+  }, [monthlyGroupedData, monthData]);
+
+  const weeklyAverages = useMemo(() => {
+    if (weeklyData.length === 0) {
+      return { ligacoesAtendidas: 0, ticketsAtendidos: 0, pausas: 0, taxaAtendimento: 0 };
+    }
+
+    const ligacoesDays = weeklyData.filter(curr => curr.ligacoesAtendidas > 0);
+    const ticketsDays = weeklyData.filter(curr => curr.ticketsAtendidos > 0);
+    const pausasDays = weeklyData.filter(curr => curr.pausas > 0);
+
+    // Calcula a taxa de atendimento corretamente: total atendidas / total (atendidas + perdidas)
+    const totalAtendidas = weeklyData.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0);
+    const totalPerdidas = weeklyData.reduce((acc, curr) => acc + curr.ligacoesPerdidas, 0);
+    const taxaAtendimentoCorreta = totalAtendidas > 0 
+      ? parseFloat(((totalAtendidas / (totalAtendidas + totalPerdidas)) * 100).toFixed(1))
+      : 0;
+
+    return {
+      ligacoesAtendidas: ligacoesDays.length > 0
+        ? parseFloat((ligacoesDays.reduce((acc, curr) => acc + curr.ligacoesAtendidas, 0) / ligacoesDays.length).toFixed(1))
+        : 0,
+      ticketsAtendidos: ticketsDays.length > 0
+        ? parseFloat((ticketsDays.reduce((acc, curr) => acc + curr.ticketsAtendidos, 0) / ticketsDays.length).toFixed(1))
+        : 0,
+      pausas: pausasDays.length > 0
+        ? parseFloat((pausasDays.reduce((acc, curr) => acc + curr.pausas, 0) / pausasDays.length).toFixed(2))
+        : 0,
+      taxaAtendimento: taxaAtendimentoCorreta,
+    };
+  }, [weeklyData]);
+
   const currentSummaryData = viewMode === 'mensal' ? monthData : weeklyData;
   
   const totais = useMemo(() => {
@@ -199,11 +291,34 @@ export default function Kpi() {
 
   const diaDeHojeStr = `${String(hoje.getDate()).padStart(2,'0')}/${String(hoje.getMonth()+1).padStart(2,'0')}`;
   const diaSimulado = monthData.find(d => d.dataStr === diaDeHojeStr) || monthData[monthData.length - 1]; 
-  
+  const isCurrentMonthSelected = selectedYear === anoAtual && selectedMonth === mesAtual;
+  const currentWeekLabel = `Semana ${semanaAtual}`;
+
+  const renderMonthXAxisTick = ({ x, y, payload }) => {
+    const isCurrentWeek = isCurrentMonthSelected && payload.value === currentWeekLabel;
+    return (
+      <text x={x} y={y + 16} textAnchor="middle" fill={isCurrentWeek ? colors.taxa : '#64748b'} fontSize={12}>
+        {payload.value}
+      </text>
+    );
+  };
+
+  const renderWeeklyXAxisTick = ({ x, y, payload }) => {
+    const tickValue = typeof payload.value === 'string' ? payload.value : String(payload.value);
+    const [dayPart, datePart] = tickValue.split(' ');
+    const isToday = datePart === diaDeHojeStr;
+    return (
+      <text x={x} y={y + 12} textAnchor="middle" fill={isToday ? colors.taxa : '#64748b'} fontSize={12}>
+        <tspan x={x} dy={0}>{dayPart}</tspan>
+        <tspan x={x} dy={14}>{datePart}</tspan>
+      </text>
+    );
+  };
+
   const metaDiariaTickets = diaSimulado.isDiaUtil ? 3 : 0;
   const metaDiariaLigacoes = diaSimulado.isDiaUtil ? 25 : 0;
   const saldoAteOntem = diaSimulado.saldoAcumuladoTickets - (diaSimulado.ticketsAtendidos - metaDiariaTickets);
-  const metaTicketsHoje = Math.max(0, metaDiariaTickets - saldoAteOntem);
+  const metaTicketsHoje = Math.max(0, metaDiariaTickets - saldoAteOntem - diaSimulado.ticketsAtendidos);
   const precisaDeTicketsHoje = metaTicketsHoje > 0;
   const faltamLigacoes = diaSimulado.isDiaUtil ? Math.max(0, metaDiariaLigacoes - diaSimulado.ligacoesAtendidas) : 0;
 
@@ -248,7 +363,7 @@ export default function Kpi() {
               <div className="flex items-center gap-2 px-2">
                 <CalendarDays size={18} className="text-slate-400" />
                 <select className="bg-transparent text-sm font-medium text-slate-700 outline-none cursor-pointer dark:text-slate-300 dark:bg-slate-900" value={selectedWeek} onChange={(e) => setSelectedWeek(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5].map((sem) => <option key={sem} value={sem}>Semana {sem}</option>)}
+                  {availableWeeks.map((sem) => <option key={sem} value={sem}>Semana {sem}</option>)}
                 </select>
               </div>
             </>
@@ -310,21 +425,29 @@ export default function Kpi() {
                    <div className="w-3 h-3 border border-slate-400 bg-slate-400/20 rounded-sm" style={{ borderStyle: 'dashed' }}></div> Meta / Limite
                 </div>
               </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-4 text-xs text-slate-500 dark:text-slate-400">
+                <span>Média Ligações: {monthlyAverages.avgLigacoes}</span>
+                <span>Média Tickets: {monthlyAverages.avgTickets}</span>
+                <span>Média Pausas: {formatHoursMinutes(monthlyAverages.avgPausas)}</span>
+                <span>Média Taxa: {monthlyAverages.avgTaxaAtendimento}%</span>
+              </div>
             </div>
 
             <div className="h-[500px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyGroupedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <BarChart data={monthlyGroupedData} margin={{ top: 10, right: 50, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                  <XAxis dataKey="nome" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} dy={10} />
+                  <XAxis dataKey="nome" axisLine={false} tickLine={false} tick={renderMonthXAxisTick} />
                   <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
                   <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#f59e0b' }} tickFormatter={(val) => `${val}h`} />
+                  <YAxis yAxisId="taxa" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#10b981' }} tickFormatter={(val) => `${val}%`} domain={[0, 100]} />
                   
                   <Tooltip 
                     cursor={{fill: 'rgba(148, 163, 184, 0.05)'}}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: '#1e293b', color: '#fff' }}
                     formatter={(value, name) => {
                       if (name.includes("Pausas")) return [formatTime(value), name];
+                      if (name.includes("Taxa")) return [`${value}%`, name];
                       return [value, name];
                     }}
                   />
@@ -341,6 +464,10 @@ export default function Kpi() {
                   {/* PAUSAS: Realizado vs Meta (Eixo Direito) */}
                   <Bar yAxisId="right" dataKey="pausas" name="Tempo Pausas" fill={colors.pausas} radius={[4, 4, 0, 0]} barSize={25} />
                   <Bar yAxisId="right" dataKey="metaPausas" name="Limite Pausas" fill={colors.pausas} fillOpacity={0.2} stroke={colors.pausas} strokeDasharray="3 3" radius={[4, 4, 0, 0]} barSize={25} />
+
+                  {/* TAXA DE ATENDIMENTO: Realizado e Meta (Eixo Taxa) */}
+                  <ReferenceLine yAxisId="taxa" y={94} stroke={colors.taxa} strokeDasharray="3 3" label={{ position: 'top', value: 'Meta (94%)', fill: colors.taxa, fontSize: 10 }} />
+                  <Line yAxisId="taxa" type="monotone" dataKey="taxaAtendimento" name="% Atendimento" stroke={colors.taxa} strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -349,12 +476,13 @@ export default function Kpi() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Ligações e Tickets Semanais */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[350px] flex flex-col lg:col-span-2 dark:bg-slate-900 dark:border-slate-800">
-              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4 dark:text-slate-400">Evolução Diária</h3>
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2 dark:text-slate-400">Evolução Diária</h3>
+              <p className="text-xs text-slate-500 mb-4 dark:text-slate-400">Média: {weeklyAverages.ligacoesAtendidas} ligações / {weeklyAverages.ticketsAtendidos} tickets</p>
               <div className="flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={weeklyData} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="xAxisLabel" axisLine={false} tickLine={false} tick={renderWeeklyXAxisTick} />
                     
                     {/* YAxis com domain manual para as linhas de Meta não cortarem */}
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} domain={[0, dataMax => Math.max(30, dataMax + 5)]} />
@@ -374,15 +502,16 @@ export default function Kpi() {
 
             {/* Pausas Semanais */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[300px] flex flex-col dark:bg-slate-900 dark:border-slate-800">
-              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4 dark:text-slate-400">Tempo em Pausa</h3>
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2 dark:text-slate-400">Tempo em Pausa</h3>
+              <p className="text-xs text-slate-500 mb-4 dark:text-slate-400">Média: {formatHoursMinutes(weeklyAverages.pausas)}</p>
               <div className="flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={weeklyData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="xAxisLabel" axisLine={false} tickLine={false} tick={renderWeeklyXAxisTick} />
                     <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${val}h`} tick={{ fill: '#64748b' }} domain={[0, dataMax => Math.max(3, dataMax + 0.5)]} />
                     <Tooltip formatter={(value) => [formatTime(value), 'Pausa']} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }} />
-                    <ReferenceLine y={2.5} stroke={colors.pausas} strokeDasharray="3 3" label={{ position: 'top', value: 'Limite (2.5h)', fill: colors.pausas, fontSize: 10 }} />
+                    <ReferenceLine y={2.5} stroke={colors.pausas} strokeDasharray="3 3" label={{ position: 'top', value: `Limite (${formatHoursMinutes(2.5)})`, fill: colors.pausas, fontSize: 10 }} />
                     <Area type="monotone" dataKey="pausas" stroke={colors.pausas} fillOpacity={0.15} fill={colors.pausas} strokeWidth={3} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -391,12 +520,13 @@ export default function Kpi() {
 
             {/* Taxa Atendimento */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-[300px] flex flex-col dark:bg-slate-900 dark:border-slate-800">
-              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4 dark:text-slate-400">% Atendimento</h3>
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-2 dark:text-slate-400">% Atendimento</h3>
+              <p className="text-xs text-slate-500 mb-4 dark:text-slate-400">Média: {weeklyAverages.taxaAtendimento}%</p>
               <div className="flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={weeklyData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
-                    <XAxis dataKey="labelDia" axisLine={false} tickLine={false} tick={{ fill: '#64748b' }} />
+                    <XAxis dataKey="xAxisLabel" axisLine={false} tickLine={false} tick={renderWeeklyXAxisTick} />
                     <YAxis domain={[80, 100]} axisLine={false} tickLine={false} unit="%" tick={{ fill: '#64748b' }} />
                     <Tooltip formatter={(v) => [`${v}%`, 'Taxa']} contentStyle={{ borderRadius: '12px', border: 'none', backgroundColor: '#1e293b', color: '#fff' }} />
                     <ReferenceLine y={94} stroke={colors.taxa} strokeDasharray="3 3" label={{ position: 'top', value: 'Meta (94%)', fill: colors.taxa, fontSize: 10 }} />

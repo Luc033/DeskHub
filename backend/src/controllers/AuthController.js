@@ -11,12 +11,10 @@ module.exports = {
     const { name, email, password } = req.body;
 
     try {
-      // ✅ Validação básica
       if (!name || !email || !password) {
         return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
       }
 
-      // ✅ Validação de formato de email
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         return res.status(400).json({ error: 'Formato de email inválido' });
@@ -30,7 +28,6 @@ module.exports = {
         return res.status(400).json({ error: 'Senha deve ter no mínimo 8 caracteres' });
       }
 
-      // ✅ Verificar se existe
       const userExists = await prisma.user.findFirst({
         where: { OR: [{ email }, { name }] }
       });
@@ -43,15 +40,12 @@ module.exports = {
         });
       }
 
-      // ✅ Hash seguro (rounds aumentado)
       const hashedPassword = await bcrypt.hash(password, 12);
 
-      // ✅ SEGURANÇA: role é sempre 'user' — promoção a admin somente via painel admin
       const user = await prisma.user.create({
         data: { name, email, password: hashedPassword, role: 'user' }
       });
 
-      // ✅ NÃO retornar senha
       const { password: _, ...userWithoutPassword } = user;
 
       return res.status(201).json(userWithoutPassword);
@@ -72,7 +66,6 @@ module.exports = {
       const user = await prisma.user.findUnique({ where: { email } });
 
       if (!user) {
-        // ✅ Mensagem genérica por segurança (não revelar que email não existe)
         return res.status(401).json({ error: 'Email ou senha incorretos' });
       }
 
@@ -171,13 +164,11 @@ module.exports = {
         where: { id: req.userId }
       });
 
-      // ✅ Verificar senha antiga
       const isValid = await bcrypt.compare(oldPassword, user.password);
       if (!isValid) {
         return res.status(401).json({ error: 'Senha atual incorreta' });
       }
 
-      // ✅ Hash nova senha
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
       const updatedUser = await prisma.user.update({

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import {
   Phone,
   Ticket,
@@ -20,9 +20,14 @@ import {
   Zap,
   Search,
   CheckSquare,
+  Undo,
+  Redo,
 } from "lucide-react";
 import { useAutocomplete } from "./useAutocomplete";
 import AutocompletePopover from "./AutocompletePopover";
+import { apiCall } from "./lib/api";
+import { attendanceDraftStorage } from "./lib/attendanceDraftStorage";
+import { AuthContext } from "./contexts/AuthContext";
 
 // ================= FUNÇÕES UTILITÁRIAS =================
 const isValidCNPJ = (cnpj) => {
@@ -81,9 +86,18 @@ const formatDateTime = (dateString) => {
 };
 
 export default function Attendances() {
-  const defaultTratativa =
-    localStorage.getItem("my_default_tratativa") ||
-    "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...";
+  // Helper function para obter a tratativa correta baseada no tipo
+  const getDefaultTratativa = (type = "phone") => {
+    const phoneDefault = localStorage.getItem("my_default_tratativa_phone");
+    const ticketDefault = localStorage.getItem("my_default_tratativa_ticket");
+    const fallback = "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...";
+    
+    if (type === "phone") return phoneDefault || fallback;
+    if (type === "ticket") return ticketDefault || fallback;
+    return fallback;
+  };
+
+  const defaultTratativa = getDefaultTratativa("phone");
 
   const [attendances, setAttendances] = useState([]);
   const [toast, setToast] = useState(null);
@@ -165,6 +179,11 @@ export default function Attendances() {
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [dropdownSearch, setDropdownSearch] = useState("");
   const tratativaRef = useRef(null);
+  const notesRef = useRef(null);
+  const tratativaUndoStack = useRef([]);
+  const tratativaRedoStack = useRef([]);
+  const notesUndoStack = useRef([]);
+  const notesRedoStack = useRef([]);
   const { popup, listRef, confirmItem, handleChange, handleKeyDown, close } =
     useAutocomplete({
       textareaRef: tratativaRef,
@@ -180,6 +199,63 @@ export default function Attendances() {
       },
     });
   const [cursorPos, setCursorPos] = useState({ start: 0, end: 0 });
+
+  const pushStack = (stackRef, value) => {
+    stackRef.current.push(value);
+    if (stackRef.current.length > 100) stackRef.current.shift();
+  };
+
+  const handleTratativaUndo = () => {
+    const prevValue = tratativaUndoStack.current.pop();
+    if (prevValue === undefined) return;
+    tratativaRedoStack.current.push(form.tratativa);
+    setForm((prev) => ({ ...prev, tratativa: prevValue }));
+    requestAnimationFrame(() => {
+      if (tratativaRef.current) {
+        tratativaRef.current.focus();
+        tratativaRef.current.setSelectionRange(prevValue.length, prevValue.length);
+      }
+    });
+  };
+
+  const handleTratativaRedo = () => {
+    const nextValue = tratativaRedoStack.current.pop();
+    if (nextValue === undefined) return;
+    tratativaUndoStack.current.push(form.tratativa);
+    setForm((prev) => ({ ...prev, tratativa: nextValue }));
+    requestAnimationFrame(() => {
+      if (tratativaRef.current) {
+        tratativaRef.current.focus();
+        tratativaRef.current.setSelectionRange(nextValue.length, nextValue.length);
+      }
+    });
+  };
+
+  const handleNotesUndo = () => {
+    const prevValue = notesUndoStack.current.pop();
+    if (prevValue === undefined) return;
+    notesRedoStack.current.push(form.notes);
+    setForm((prev) => ({ ...prev, notes: prevValue }));
+    requestAnimationFrame(() => {
+      if (notesRef.current) {
+        notesRef.current.focus();
+        notesRef.current.setSelectionRange(prevValue.length, prevValue.length);
+      }
+    });
+  };
+
+  const handleNotesRedo = () => {
+    const nextValue = notesRedoStack.current.pop();
+    if (nextValue === undefined) return;
+    notesUndoStack.current.push(form.notes);
+    setForm((prev) => ({ ...prev, notes: nextValue }));
+    requestAnimationFrame(() => {
+      if (notesRef.current) {
+        notesRef.current.focus();
+        notesRef.current.setSelectionRange(nextValue.length, nextValue.length);
+      }
+    });
+  };
 
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [quickAddForm, setQuickAddForm] = useState({
@@ -218,6 +294,40 @@ export default function Attendances() {
     document.body.removeChild(textArea);
   };
 
+  // ================= COMUNICAÇÃO COM EXTENSÃO =================
+  const handleCallExtension = () => {
+    // O content script da extensão (content_deskhub.js) escuta eventos
+    // window.postMessage com type === "DESKHUB_REQUEST" na mesma janela.
+    // Não é possível acessar chrome.runtime diretamente da página React —
+    // esse objeto só existe dentro do próprio content script.
+    // A ponte correta é sempre via window.postMessage → content script.
+    window.postMessage({ type: "DESKHUB_REQUEST" }, "*");
+  };
+
+  // Listener para mensagens da extensão
+  useEffect(() => {
+    const handleExtensionMessage = (event) => {
+      // Aceita apenas mensagens da mesma janela (não de iframes)
+      if (event.source !== window) return;
+      // Guard: event.data pode ser nulo em algumas extensões de terceiros
+      if (!event.data || typeof event.data !== "object") return;
+
+      const { type, data } = event.data;
+
+      if (type === "EXTENSION_RESPONSE") {
+        if (data?.success) {
+          showToast("Dados recebidos da extensão!");
+          console.log("Dados da extensão:", data);
+        } else {
+          showToast(`Erro da extensão: ${data?.message}`);
+        }
+      }
+    };
+
+    window.addEventListener("message", handleExtensionMessage);
+    return () => window.removeEventListener("message", handleExtensionMessage);
+  }, []);
+
   useEffect(() => {
     fetch(`/api/attendances`)
       .then((res) => res.json())
@@ -244,16 +354,63 @@ export default function Attendances() {
       .then(data => { if (Array.isArray(data)) setDynamicCategories(data); })
       .catch(() => {});
 
-    // Sincroniza a tratativa padrão do banco com o LocalStorage logo ao abrir a tela
+    // Sincroniza as tratativas padrão do banco com o LocalStorage logo ao abrir a tela
     fetch(`/api/settings/system`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.defaultTratativa) {
-          localStorage.setItem("my_default_tratativa", data.defaultTratativa);
+        if (data) {
+          if (data.defaultTratativaPhone) {
+            localStorage.setItem("my_default_tratativa_phone", data.defaultTratativaPhone);
+          }
+          if (data.defaultTratativaTicket) {
+            localStorage.setItem("my_default_tratativa_ticket", data.defaultTratativaTicket);
+          }
         }
       })
-      .catch((err) => console.error("Erro ao sincronizar tratativa:", err));
+      .catch((err) => console.error("Erro ao sincronizar tratativas:", err));
   }, []);
+
+  // Recupera rascunho do localStorage quando faz login
+  const { user } = useContext(AuthContext);
+  useEffect(() => {
+    if (user && attendanceDraftStorage.hasDraft()) {
+      const draft = attendanceDraftStorage.getDraft();
+      const draftTime = attendanceDraftStorage.getDraftTimestamp();
+      const draftEditingId = attendanceDraftStorage.getDraftEditingId();
+      
+      const confirmRestore = window.confirm(
+        `Você tem um atendimento em rascunho desde ${new Date(draftTime).toLocaleString('pt-BR')}.\n\nDeseja recuperá-lo?`
+      );
+      
+      if (confirmRestore) {
+        setForm(draft);
+        setEditingId(draftEditingId); // Restaura também o editingId para continuar editando, não criar novo
+        setIsModalOpen(true);
+        showToast('Rascunho restaurado!');
+      }
+      
+      // Limpa o rascunho após recuperar ou descartar
+      attendanceDraftStorage.clearDraft();
+    }
+  }, [user]);
+
+  // Escuta quando a sessão expira
+  useEffect(() => {
+    const handleTokenExpired = () => {
+      showToast('Sua sessão expirou. Por favor, faça login novamente.');
+    };
+
+    window.addEventListener('auth:token-expired', handleTokenExpired);
+    return () => window.removeEventListener('auth:token-expired', handleTokenExpired);
+  }, []);
+
+  // Atualiza a tratativa padrão quando muda de tipo de atendimento
+  useEffect(() => {
+    if (!editingId) {
+      const newTratativa = getDefaultTratativa(localTab);
+      setForm((prev) => ({ ...prev, tratativa: newTratativa }));
+    }
+  }, [localTab, editingId]);
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -311,7 +468,7 @@ export default function Attendances() {
 
   const reloadAttendances = async () => {
     try {
-      const res = await fetch(`/api/attendances`);
+      const res = await apiCall(`/api/attendances`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -337,18 +494,25 @@ export default function Attendances() {
     abortControllerRef.current = new AbortController();
 
     timerRef.current = setTimeout(async () => {
+      // Salva rascunho periodicamente enquanto está digitando
+      attendanceDraftStorage.saveDraft(form, editingId);
+
       if (editingId) {
         try {
-          await fetch(`/api/attendances/${editingId}`, {
+          const res = await apiCall(`/api/attendances/${editingId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(form),
             signal: abortControllerRef.current.signal,
           });
 
-          setAttendances((prev) =>
-            prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
-          );
+          if (res.ok) {
+            setAttendances((prev) =>
+              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
+            );
+            // Limpa rascunho se o auto-save foi bem-sucedido
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
           if (e.name !== "AbortError") {
             console.error("Erro no auto-save PUT:", e);
@@ -359,7 +523,7 @@ export default function Attendances() {
 
         isCreatingRef.current = true;
         try {
-          const res = await fetch(`/api/attendances`, {
+          const res = await apiCall(`/api/attendances`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -370,13 +534,17 @@ export default function Attendances() {
             signal: abortControllerRef.current.signal,
           });
 
-          const novo = await res.json();
-          setEditingId(novo.id);
+          if (res.ok) {
+            const novo = await res.json();
+            setEditingId(novo.id);
 
-          setAttendances((prev) => [
-            { ...novo, type: localTab, status: "in_progress" },
-            ...prev,
-          ]);
+            setAttendances((prev) => [
+              { ...novo, type: localTab, status: "in_progress" },
+              ...prev,
+            ]);
+            // Limpa rascunho se o auto-save foi bem-sucedido
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
           if (e.name !== "AbortError") {
             console.error("Erro no auto-save POST:", e);
@@ -417,9 +585,7 @@ export default function Attendances() {
   }, [missedCalls, pauses]);
 
   const handleOpenNew = () => {
-    const currentDefault =
-      localStorage.getItem("my_default_tratativa") ||
-      "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...\n\n\n\nEspero que tenha gostado do atendimento.\n\nQualquer coisa estamos à disposição.";
+    const currentDefault = getDefaultTratativa(localTab);
 
     setForm({
       ticket: "#",
@@ -440,25 +606,36 @@ export default function Attendances() {
       abortControllerRef.current.abort();
     }
 
+    // Salva rascunho antes de tentar enviar
+    attendanceDraftStorage.saveDraft(form, editingId);
+
     if (editingId) {
       const currentAtt = attendances.find((a) => a.id === editingId);
       if (currentAtt?.status === "in_progress") {
         try {
-          await fetch(`/api/attendances/${editingId}`, {
+          const res = await apiCall(`/api/attendances/${editingId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(form),
           });
-          setAttendances((prev) =>
-            prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
-          );
-        } catch (e) {}
+          if (res.ok) {
+            setAttendances((prev) =>
+              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
+            );
+            // Remove rascunho apenas se salvou com sucesso
+            attendanceDraftStorage.clearDraft();
+          }
+        } catch (e) {
+          console.error('Erro ao salvar atendimento:', e);
+          showToast('Erro ao salvar. Rascunho foi preservado.');
+          return;
+        }
       }
     } else {
       if (!isCreatingRef.current) {
         isCreatingRef.current = true;
         try {
-          const res = await fetch(`/api/attendances`, {
+          const res = await apiCall(`/api/attendances`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -467,19 +644,31 @@ export default function Attendances() {
               status: "in_progress",
             }),
           });
-          const novo = await res.json();
-          setAttendances((prev) => [
-            { ...novo, type: localTab, status: "in_progress" },
-            ...prev,
-          ]);
+          if (res.ok) {
+            const novo = await res.json();
+            setAttendances((prev) => [
+              { ...novo, type: localTab, status: "in_progress" },
+              ...prev,
+            ]);
+            // Remove rascunho apenas se salvou com sucesso
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
+          console.error('Erro ao criar atendimento:', e);
+          showToast('Erro ao criar. Rascunho foi preservado.');
+          isCreatingRef.current = false;
+          return;
         } finally {
           isCreatingRef.current = false;
         }
       }
     }
 
-    await reloadAttendances();
+    try {
+      await reloadAttendances();
+    } catch (e) {
+      console.error('Erro ao recarregar:', e);
+    }
     setIsModalOpen(false);
     setEditingId(null);
   };
@@ -492,6 +681,9 @@ export default function Attendances() {
     }
 
     try {
+      // Salva rascunho antes de tentar finalizar
+      attendanceDraftStorage.saveDraft(form, editingId);
+
       let idToFinalize = editingId;
 
       if (!idToFinalize) {
@@ -501,7 +693,7 @@ export default function Attendances() {
         }
 
         isCreatingRef.current = true;
-        const resCreate = await fetch(`/api/attendances`, {
+        const resCreate = await apiCall(`/api/attendances`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -510,12 +702,13 @@ export default function Attendances() {
             status: "in_progress",
           }),
         });
+        if (!resCreate.ok) throw new Error('Erro ao criar atendimento');
         const novo = await resCreate.json();
         idToFinalize = novo.id;
         isCreatingRef.current = false;
       }
 
-      const response = await fetch(
+      const response = await apiCall(
         `/api/attendances/${idToFinalize}/finalize`,
         {
           method: "PUT",
@@ -527,13 +720,19 @@ export default function Attendances() {
         },
       );
 
+      if (!response.ok) throw new Error('Erro ao finalizar atendimento');
+
+      // Remove rascunho apenas se finalizou com sucesso
+      attendanceDraftStorage.clearDraft();
+
       await reloadAttendances();
       setIsModalOpen(false);
       setEditingId(null);
       copyToClipboard(form.tratativa, false);
       showToast("Atendimento finalizado e tratativa copiada!");
     } catch (error) {
-      console.error(error);
+      console.error('Erro ao finalizar:', error);
+      showToast('Erro ao finalizar. Rascunho foi preservado.');
       isCreatingRef.current = false;
     }
   };
@@ -546,24 +745,47 @@ export default function Attendances() {
       )
     ) {
       try {
-        await fetch(`/api/attendances/${id}`, {
+        await apiCall(`/api/attendances/${id}`, {
           method: "DELETE",
         });
         await reloadAttendances();
         showToast("Registo apagado!");
-      } catch (error) {}
+      } catch (error) {
+        console.error('Erro ao deletar:', error);
+        showToast('Erro ao deletar atendimento.');
+      }
     }
   };
 
+  const getLocalDateString = (dateValue) => {
+    if (!dateValue) return "";
+    const date = new Date(dateValue);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+
+  const currentLocalDateString = getLocalDateString(new Date());
+
+  const todaysAttendancesCount = attendances.filter((a) => {
+    if (a.type !== "phone") return false;
+    const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
+    return getLocalDateString(dateVal) === currentLocalDateString;
+  }).length;
+
+  const todaysTicketsCount = attendances.filter((a) => {
+    if (a.type !== "ticket") return false;
+    const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
+    return getLocalDateString(dateVal) === currentLocalDateString;
+  }).length;
+
   const filteredAttendances = attendances.filter((a) => {
     if (a.type !== localTab) return false;
-    
+
     const dateVal = a.openedAt || a.createdAt || a.created_at || a.updatedAt;
     if (!dateVal) return false;
-    
+
     const d = new Date(dateVal);
-    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
     return dStr === selectedDate;
   });
 
@@ -619,6 +841,18 @@ export default function Attendances() {
       end: e.target.selectionEnd,
     });
 
+  const handleTratativaChange = (value) => {
+    pushStack(tratativaUndoStack, form.tratativa);
+    tratativaRedoStack.current = [];
+    setForm((prev) => ({ ...prev, tratativa: value }));
+  };
+
+  const handleNotesChange = (value) => {
+    pushStack(notesUndoStack, form.notes);
+    notesRedoStack.current = [];
+    setForm((prev) => ({ ...prev, notes: value }));
+  };
+
   const handleInsertShortcut = (contentToInsert) => {
     copyToClipboard(contentToInsert, false);
     showToast("Copiado e Inserido!");
@@ -629,6 +863,8 @@ export default function Attendances() {
 
     const newText =
       text.substring(0, start) + contentToInsert + text.substring(end);
+    pushStack(tratativaUndoStack, form.tratativa);
+    tratativaRedoStack.current = [];
     setForm((prev) => ({ ...prev, tratativa: newText }));
 
     const newPos = start + contentToInsert.length;
@@ -744,7 +980,7 @@ export default function Attendances() {
               className="text-[#175676] dark:text-[#1FA697]"
             />
             <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {attendances.filter((a) => a.type === "phone").length}
+              {todaysAttendancesCount}
             </span>
           </div>
         </div>
@@ -755,7 +991,7 @@ export default function Attendances() {
           <div className="flex items-center gap-2 mt-auto">
             <Ticket size={20} className="text-[#175676] dark:text-[#1FA697]" />
             <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {attendances.filter((a) => a.type === "ticket").length}
+              {todaysTicketsCount}
             </span>
           </div>
         </div>
@@ -841,7 +1077,7 @@ export default function Attendances() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
           <input
             type="date"
             value={selectedDate}
@@ -1188,29 +1424,77 @@ export default function Attendances() {
                       />{" "}
                       Tratativa Final
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm((prev) => ({
-                          ...prev,
-                          tratativa: defaultTratativa,
-                        }));
-                        showToast("Tratativa redefinida!");
-                      }}
-                      className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                    >
-                      <Eraser size={14} /> Limpar
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleCallExtension}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Conectar com Extensão"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="20"
+                          height="20"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          className="text-current"
+                        >
+                          <g clipPath="url(#clip0_deskhub_extension)">
+                            <path
+                              d="M8 3.5C5.23833 3.5 3 5.72 3 8.45917V10.8333H3.92167V10.5967C3.92167 9.48583 4.82917 8.585 5.94917 8.585C7.06917 8.585 7.97667 9.48583 7.97667 10.5967V10.8333H8.89833V10.5967C8.89833 8.98083 7.5775 7.67167 5.94917 7.67167C5.315 7.67167 4.7275 7.87 4.24667 8.20833C4.75 7.21583 5.78667 6.535 6.98333 6.535C8.67417 6.535 10.045 7.895 10.045 9.57167V10.8333H10.9667V9.57167C10.9667 7.39 9.18333 5.62083 6.98333 5.62083C5.99417 5.62083 5.08917 5.97833 4.3925 6.57083C5.07667 5.28833 6.435 4.41417 8 4.41417C10.2525 4.41417 12.0783 6.225 12.0783 8.45917V10.8333H13V8.45917C13 5.72 10.7617 3.5 8 3.5Z"
+                              fill="currentColor"
+                            />
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_deskhub_extension">
+                              <rect
+                                width="10"
+                                height="7.33333"
+                                fill="white"
+                                transform="translate(3 3.5)"
+                              />
+                            </clipPath>
+                          </defs>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTratativaUndo}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Desfazer"
+                      >
+                        <Undo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTratativaRedo}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                        title="Refazer"
+                      >
+                        <Redo size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForm((prev) => ({
+                            ...prev,
+                            tratativa: defaultTratativa,
+                          }));
+                          showToast("Tratativa redefinida!");
+                        }}
+                        className="text-xs font-bold text-slate-500 hover:text-[#175676] hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                      >
+                        <Eraser size={14} /> Limpar
+                      </button>
+                    </div>
                   </div>
                   <textarea
+                    id="tratativa-textarea"
                     ref={tratativaRef}
                     required
                     value={form.tratativa}
                     onChange={(e) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        tratativa: e.target.value,
-                      }));
+                      handleTratativaChange(e.target.value);
                       handleTextareaState(e);
                       handleChange(e);
                     }}
@@ -1237,22 +1521,13 @@ export default function Attendances() {
                       />{" "}
                       Anotações Internas
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForm((prev) => ({ ...prev, notes: "" }));
-                        showToast("Anotações limpas!");
-                      }}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-900 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 dark:text-[#C9A02A] dark:hover:text-[#F2C94C] dark:hover:bg-[#C9A02A]/30"
-                    >
-                      <Eraser size={14} /> Limpar
-                    </button>
+                  
                   </div>
                   <textarea
+                    id="anotacoes-textarea"
+                    ref={notesRef}
                     value={form.notes}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, notes: e.target.value }))
-                    }
+                    onChange={(e) => handleNotesChange(e.target.value)}
                     placeholder="Notas privadas..."
                     className="flex-1 w-full bg-transparent px-5 py-4 outline-none resize-none whitespace-pre-wrap leading-relaxed text-sm text-slate-700 selection:bg-amber-300 selection:text-amber-900 dark:text-slate-200 dark:selection:bg-[#C9A02A]/60 dark:selection:text-[#F2C94C]"
                   ></textarea>

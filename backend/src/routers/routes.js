@@ -84,9 +84,9 @@ routes.delete('/categories/:id', CategoryController.delete);
 routes.post('/kpis', KpiController.register);
 routes.get('/kpis', KpiController.index);
 
-// Configurações (leitura: autenticado, escrita: admin)
+// Configurações (leitura: autenticado, escrita: autenticado)
 routes.get('/settings/system', SettingController.getSystem);
-routes.put('/settings/system', requireAdmin, SettingController.updateSystem);
+routes.put('/settings/system', SettingController.updateSystem);
 routes.get('/settings/ai', requireAdmin, SettingController.getAi);
 routes.put('/settings/ai', requireAdmin, SettingController.updateAi);
 
