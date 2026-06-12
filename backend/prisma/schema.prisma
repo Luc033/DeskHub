@@ -148,12 +148,14 @@ model Category {
 // ================= CONFIGURAÇÕES GLOBAIS E KPIs =================
 
 model SystemSetting {
-  id               String   @id @default("global_config")
-  defaultTratativa String?  @db.Text
-  defaultNotes     String?  @db.Text
-  sheetsWebhook    String?
-  sortAlpha        Boolean  @default(false)
-  updatedAt        DateTime @updatedAt
+  id                    String   @id @default("global_config")
+  defaultTratativa      String?  @db.Text
+  defaultTratativaPhone String?  @db.Text
+  defaultTratativaTicket String? @db.Text
+  defaultNotes          String?  @db.Text
+  sheetsWebhook         String?
+  sortAlpha             Boolean  @default(false)
+  updatedAt             DateTime @updatedAt
 }
 
 model AiSetting {

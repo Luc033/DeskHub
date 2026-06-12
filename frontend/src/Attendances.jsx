@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useContext } from "react";
 import {
   Phone,
   Ticket,
@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 import { useAutocomplete } from "./useAutocomplete";
 import AutocompletePopover from "./AutocompletePopover";
+import { apiCall } from "./lib/api";
+import { attendanceDraftStorage } from "./lib/attendanceDraftStorage";
+import { AuthContext } from "./contexts/AuthContext";
 
 // ================= FUNÇÕES UTILITÁRIAS =================
 const isValidCNPJ = (cnpj) => {
@@ -83,9 +86,18 @@ const formatDateTime = (dateString) => {
 };
 
 export default function Attendances() {
-  const defaultTratativa =
-    localStorage.getItem("my_default_tratativa") ||
-    "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...";
+  // Helper function para obter a tratativa correta baseada no tipo
+  const getDefaultTratativa = (type = "phone") => {
+    const phoneDefault = localStorage.getItem("my_default_tratativa_phone");
+    const ticketDefault = localStorage.getItem("my_default_tratativa_ticket");
+    const fallback = "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...";
+    
+    if (type === "phone") return phoneDefault || fallback;
+    if (type === "ticket") return ticketDefault || fallback;
+    return fallback;
+  };
+
+  const defaultTratativa = getDefaultTratativa("phone");
 
   const [attendances, setAttendances] = useState([]);
   const [toast, setToast] = useState(null);
@@ -342,16 +354,63 @@ export default function Attendances() {
       .then(data => { if (Array.isArray(data)) setDynamicCategories(data); })
       .catch(() => {});
 
-    // Sincroniza a tratativa padrão do banco com o LocalStorage logo ao abrir a tela
+    // Sincroniza as tratativas padrão do banco com o LocalStorage logo ao abrir a tela
     fetch(`/api/settings/system`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && data.defaultTratativa) {
-          localStorage.setItem("my_default_tratativa", data.defaultTratativa);
+        if (data) {
+          if (data.defaultTratativaPhone) {
+            localStorage.setItem("my_default_tratativa_phone", data.defaultTratativaPhone);
+          }
+          if (data.defaultTratativaTicket) {
+            localStorage.setItem("my_default_tratativa_ticket", data.defaultTratativaTicket);
+          }
         }
       })
-      .catch((err) => console.error("Erro ao sincronizar tratativa:", err));
+      .catch((err) => console.error("Erro ao sincronizar tratativas:", err));
   }, []);
+
+  // Recupera rascunho do localStorage quando faz login
+  const { user } = useContext(AuthContext);
+  useEffect(() => {
+    if (user && attendanceDraftStorage.hasDraft()) {
+      const draft = attendanceDraftStorage.getDraft();
+      const draftTime = attendanceDraftStorage.getDraftTimestamp();
+      const draftEditingId = attendanceDraftStorage.getDraftEditingId();
+      
+      const confirmRestore = window.confirm(
+        `Você tem um atendimento em rascunho desde ${new Date(draftTime).toLocaleString('pt-BR')}.\n\nDeseja recuperá-lo?`
+      );
+      
+      if (confirmRestore) {
+        setForm(draft);
+        setEditingId(draftEditingId); // Restaura também o editingId para continuar editando, não criar novo
+        setIsModalOpen(true);
+        showToast('Rascunho restaurado!');
+      }
+      
+      // Limpa o rascunho após recuperar ou descartar
+      attendanceDraftStorage.clearDraft();
+    }
+  }, [user]);
+
+  // Escuta quando a sessão expira
+  useEffect(() => {
+    const handleTokenExpired = () => {
+      showToast('Sua sessão expirou. Por favor, faça login novamente.');
+    };
+
+    window.addEventListener('auth:token-expired', handleTokenExpired);
+    return () => window.removeEventListener('auth:token-expired', handleTokenExpired);
+  }, []);
+
+  // Atualiza a tratativa padrão quando muda de tipo de atendimento
+  useEffect(() => {
+    if (!editingId) {
+      const newTratativa = getDefaultTratativa(localTab);
+      setForm((prev) => ({ ...prev, tratativa: newTratativa }));
+    }
+  }, [localTab, editingId]);
 
   useEffect(() => {
     const fetchCompany = async () => {
@@ -409,7 +468,7 @@ export default function Attendances() {
 
   const reloadAttendances = async () => {
     try {
-      const res = await fetch(`/api/attendances`);
+      const res = await apiCall(`/api/attendances`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -435,18 +494,25 @@ export default function Attendances() {
     abortControllerRef.current = new AbortController();
 
     timerRef.current = setTimeout(async () => {
+      // Salva rascunho periodicamente enquanto está digitando
+      attendanceDraftStorage.saveDraft(form, editingId);
+
       if (editingId) {
         try {
-          await fetch(`/api/attendances/${editingId}`, {
+          const res = await apiCall(`/api/attendances/${editingId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(form),
             signal: abortControllerRef.current.signal,
           });
 
-          setAttendances((prev) =>
-            prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
-          );
+          if (res.ok) {
+            setAttendances((prev) =>
+              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
+            );
+            // Limpa rascunho se o auto-save foi bem-sucedido
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
           if (e.name !== "AbortError") {
             console.error("Erro no auto-save PUT:", e);
@@ -457,7 +523,7 @@ export default function Attendances() {
 
         isCreatingRef.current = true;
         try {
-          const res = await fetch(`/api/attendances`, {
+          const res = await apiCall(`/api/attendances`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -468,13 +534,17 @@ export default function Attendances() {
             signal: abortControllerRef.current.signal,
           });
 
-          const novo = await res.json();
-          setEditingId(novo.id);
+          if (res.ok) {
+            const novo = await res.json();
+            setEditingId(novo.id);
 
-          setAttendances((prev) => [
-            { ...novo, type: localTab, status: "in_progress" },
-            ...prev,
-          ]);
+            setAttendances((prev) => [
+              { ...novo, type: localTab, status: "in_progress" },
+              ...prev,
+            ]);
+            // Limpa rascunho se o auto-save foi bem-sucedido
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
           if (e.name !== "AbortError") {
             console.error("Erro no auto-save POST:", e);
@@ -515,9 +585,7 @@ export default function Attendances() {
   }, [missedCalls, pauses]);
 
   const handleOpenNew = () => {
-    const currentDefault =
-      localStorage.getItem("my_default_tratativa") ||
-      "Olá, tudo bem?\n\nMe chamo Lucas e conforme conversamos...\n\n\n\nEspero que tenha gostado do atendimento.\n\nQualquer coisa estamos à disposição.";
+    const currentDefault = getDefaultTratativa(localTab);
 
     setForm({
       ticket: "#",
@@ -538,25 +606,36 @@ export default function Attendances() {
       abortControllerRef.current.abort();
     }
 
+    // Salva rascunho antes de tentar enviar
+    attendanceDraftStorage.saveDraft(form, editingId);
+
     if (editingId) {
       const currentAtt = attendances.find((a) => a.id === editingId);
       if (currentAtt?.status === "in_progress") {
         try {
-          await fetch(`/api/attendances/${editingId}`, {
+          const res = await apiCall(`/api/attendances/${editingId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(form),
           });
-          setAttendances((prev) =>
-            prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
-          );
-        } catch (e) {}
+          if (res.ok) {
+            setAttendances((prev) =>
+              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
+            );
+            // Remove rascunho apenas se salvou com sucesso
+            attendanceDraftStorage.clearDraft();
+          }
+        } catch (e) {
+          console.error('Erro ao salvar atendimento:', e);
+          showToast('Erro ao salvar. Rascunho foi preservado.');
+          return;
+        }
       }
     } else {
       if (!isCreatingRef.current) {
         isCreatingRef.current = true;
         try {
-          const res = await fetch(`/api/attendances`, {
+          const res = await apiCall(`/api/attendances`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -565,19 +644,31 @@ export default function Attendances() {
               status: "in_progress",
             }),
           });
-          const novo = await res.json();
-          setAttendances((prev) => [
-            { ...novo, type: localTab, status: "in_progress" },
-            ...prev,
-          ]);
+          if (res.ok) {
+            const novo = await res.json();
+            setAttendances((prev) => [
+              { ...novo, type: localTab, status: "in_progress" },
+              ...prev,
+            ]);
+            // Remove rascunho apenas se salvou com sucesso
+            attendanceDraftStorage.clearDraft();
+          }
         } catch (e) {
+          console.error('Erro ao criar atendimento:', e);
+          showToast('Erro ao criar. Rascunho foi preservado.');
+          isCreatingRef.current = false;
+          return;
         } finally {
           isCreatingRef.current = false;
         }
       }
     }
 
-    await reloadAttendances();
+    try {
+      await reloadAttendances();
+    } catch (e) {
+      console.error('Erro ao recarregar:', e);
+    }
     setIsModalOpen(false);
     setEditingId(null);
   };
@@ -590,6 +681,9 @@ export default function Attendances() {
     }
 
     try {
+      // Salva rascunho antes de tentar finalizar
+      attendanceDraftStorage.saveDraft(form, editingId);
+
       let idToFinalize = editingId;
 
       if (!idToFinalize) {
@@ -599,7 +693,7 @@ export default function Attendances() {
         }
 
         isCreatingRef.current = true;
-        const resCreate = await fetch(`/api/attendances`, {
+        const resCreate = await apiCall(`/api/attendances`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -608,12 +702,13 @@ export default function Attendances() {
             status: "in_progress",
           }),
         });
+        if (!resCreate.ok) throw new Error('Erro ao criar atendimento');
         const novo = await resCreate.json();
         idToFinalize = novo.id;
         isCreatingRef.current = false;
       }
 
-      const response = await fetch(
+      const response = await apiCall(
         `/api/attendances/${idToFinalize}/finalize`,
         {
           method: "PUT",
@@ -625,13 +720,19 @@ export default function Attendances() {
         },
       );
 
+      if (!response.ok) throw new Error('Erro ao finalizar atendimento');
+
+      // Remove rascunho apenas se finalizou com sucesso
+      attendanceDraftStorage.clearDraft();
+
       await reloadAttendances();
       setIsModalOpen(false);
       setEditingId(null);
       copyToClipboard(form.tratativa, false);
       showToast("Atendimento finalizado e tratativa copiada!");
     } catch (error) {
-      console.error(error);
+      console.error('Erro ao finalizar:', error);
+      showToast('Erro ao finalizar. Rascunho foi preservado.');
       isCreatingRef.current = false;
     }
   };
@@ -644,12 +745,15 @@ export default function Attendances() {
       )
     ) {
       try {
-        await fetch(`/api/attendances/${id}`, {
+        await apiCall(`/api/attendances/${id}`, {
           method: "DELETE",
         });
         await reloadAttendances();
         showToast("Registo apagado!");
-      } catch (error) {}
+      } catch (error) {
+        console.error('Erro ao deletar:', error);
+        showToast('Erro ao deletar atendimento.');
+      }
     }
   };
 

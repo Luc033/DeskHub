@@ -8,16 +8,21 @@ module.exports = {
       if (!config) config = await prisma.systemSetting.create({ data: { id: 'global_config' } });
       return res.json(config);
     } catch (error) {
-      return res.status(500).json({ error: 'Erro ao buscar configs do sistema' });
+      console.error('Erro ao buscar configs do sistema:', error);
+      return res.status(500).json({ error: 'Erro ao buscar configs do sistema', details: error.message });
     }
   },
 
   async updateSystem(req, res) {
     try {
-      const { companyName, defaultTratativa, theme } = req.body;
+      const { companyName, defaultTratativa, defaultTratativaPhone, defaultTratativaTicket, theme } = req.body;
       const data = {};
       if (companyName !== undefined) data.companyName = String(companyName).slice(0, 100);
+      // Suporte para a antiga tratativa única (fallback para compatibilidade)
       if (defaultTratativa !== undefined) data.defaultTratativa = String(defaultTratativa).slice(0, 2000);
+      // Novas tratativas separadas por tipo
+      if (defaultTratativaPhone !== undefined) data.defaultTratativaPhone = String(defaultTratativaPhone).slice(0, 2000);
+      if (defaultTratativaTicket !== undefined) data.defaultTratativaTicket = String(defaultTratativaTicket).slice(0, 2000);
       if (theme !== undefined) data.theme = String(theme).slice(0, 20);
 
       const config = await prisma.systemSetting.upsert({
@@ -27,7 +32,8 @@ module.exports = {
       });
       return res.json(config);
     } catch (error) {
-      return res.status(500).json({ error: 'Erro ao atualizar configs do sistema' });
+      console.error('Erro ao atualizar configs do sistema:', error);
+      return res.status(500).json({ error: 'Erro ao atualizar configs do sistema', details: error.message });
     }
   },
 

@@ -1,10 +1,24 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { attendanceDraftStorage } from '../lib/attendanceDraftStorage';
 
 export const AuthContext = createContext({});
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState(null);
+
+  // Escuta evento de token expirado
+  useEffect(() => {
+    const handleTokenExpired = (event) => {
+      setSessionExpiredMessage(event.detail?.message || 'Sua sessão expirou.');
+      // Auto-limpa mensagem após 5 segundos
+      setTimeout(() => setSessionExpiredMessage(null), 5000);
+    };
+
+    window.addEventListener('auth:token-expired', handleTokenExpired);
+    return () => window.removeEventListener('auth:token-expired', handleTokenExpired);
+  }, []);
 
   // Assim que o site abre, verifica se já tem um token salvo
   useEffect(() => {
@@ -70,7 +84,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!user, user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!user, user, loading, login, register, logout, sessionExpiredMessage }}>
       {children}
     </AuthContext.Provider>
   );

@@ -14,6 +14,8 @@ import {
   Upload,
   Users,
   Trash2,
+  PhoneCall,
+  Ticket,
 } from "lucide-react";
 import { AuthContext } from "./contexts/AuthContext";
 
@@ -37,7 +39,10 @@ export default function Settings() {
   };
 
   // ================= ESTADOS =================
-  const [defaultTratativa, setDefaultTratativa] = useState("");
+  const [defaultTratativas, setDefaultTratativas] = useState({
+    phone: "",
+    ticket: "",
+  });
   const [profileForm, setProfileForm] = useState({
     name: user?.name || "",
     email: user?.email || "",
@@ -78,16 +83,20 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    const localText = localStorage.getItem("my_default_tratativa");
-    if (localText) setDefaultTratativa(localText);
+    const localPhone = localStorage.getItem("my_default_tratativa_phone") || "";
+    const localTicket = localStorage.getItem("my_default_tratativa_ticket") || "";
+    setDefaultTratativas({ phone: localPhone, ticket: localTicket });
 
     fetch("/api/settings/system")
       .then((res) => res.json())
       .then((data) => {
-        if (data.defaultTratativa) {
-          setDefaultTratativa(data.defaultTratativa);
-          localStorage.setItem("my_default_tratativa", data.defaultTratativa);
-        }
+        const newTratativas = {
+          phone: data.defaultTratativaPhone || localPhone || "",
+          ticket: data.defaultTratativaTicket || localTicket || "",
+        };
+        setDefaultTratativas(newTratativas);
+        localStorage.setItem("my_default_tratativa_phone", newTratativas.phone);
+        localStorage.setItem("my_default_tratativa_ticket", newTratativas.ticket);
       })
       .catch((err) => console.error(err));
 
@@ -118,11 +127,15 @@ export default function Settings() {
       const res = await fetch("/api/settings/system", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ defaultTratativa }),
+        body: JSON.stringify({
+          defaultTratativaPhone: defaultTratativas.phone,
+          defaultTratativaTicket: defaultTratativas.ticket,
+        }),
       });
       if (res.ok) {
-        localStorage.setItem("my_default_tratativa", defaultTratativa);
-        showToast("Tratativa padrão sincronizada na nuvem!");
+        localStorage.setItem("my_default_tratativa_phone", defaultTratativas.phone);
+        localStorage.setItem("my_default_tratativa_ticket", defaultTratativas.ticket);
+        showToast("Tratativas padrão sincronizadas na nuvem!");
       }
     } catch (err) {
       showToast("Erro ao salvar. Verifique a conexão.");
@@ -581,24 +594,49 @@ export default function Settings() {
           <div className="space-y-6 animate-in fade-in">
             <div className="border-b border-slate-200 pb-4 mb-6 dark:border-slate-700">
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">
-                Tratativa Padrão
+                Tratativas Padrão por Tipo
               </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+                Configure tratativas específicas para cada tipo de atendimento.
+              </p>
             </div>
             <form
               onSubmit={handleSaveAttendances}
-              className="space-y-5 w-full max-w-4xl"
+              className="space-y-8 w-full max-w-4xl"
             >
-              <textarea
-                rows="15"
-                value={defaultTratativa}
-                onChange={(e) => setDefaultTratativa(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[#175676]/20 focus:border-[#175676] transition-all text-sm resize-y leading-relaxed dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200 dark:focus:border-[#1FA697]"
-              ></textarea>
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <PhoneCall size={16} className="text-blue-600 dark:text-blue-400" />
+                  Tratativa Padrão - Ligações
+                </label>
+                <textarea
+                  rows="10"
+                  value={defaultTratativas.phone}
+                  onChange={(e) => setDefaultTratativas({ ...defaultTratativas, phone: e.target.value })}
+                  placeholder="Digite a tratativa padrão para atendimentos por ligação..."
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[#175676]/20 focus:border-[#175676] transition-all text-sm resize-y leading-relaxed dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200 dark:focus:border-[#1FA697]"
+                ></textarea>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <Ticket size={16} className="text-purple-600 dark:text-purple-400" />
+                  Tratativa Padrão - Tickets
+                </label>
+                <textarea
+                  rows="10"
+                  value={defaultTratativas.ticket}
+                  onChange={(e) => setDefaultTratativas({ ...defaultTratativas, ticket: e.target.value })}
+                  placeholder="Digite a tratativa padrão para atendimentos por ticket..."
+                  className="w-full bg-slate-50 border border-slate-200 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[#175676]/20 focus:border-[#175676] transition-all text-sm resize-y leading-relaxed dark:bg-slate-900/50 dark:border-slate-700 dark:text-slate-200 dark:focus:border-[#1FA697]"
+                ></textarea>
+              </div>
+
               <button
                 type="submit"
                 className="bg-[#175676] hover:bg-[#114058] text-white px-8 py-3 rounded-xl text-sm font-bold transition-colors shadow-sm flex items-center gap-2 dark:bg-[#1FA697] dark:hover:bg-[#188075]"
               >
-                <Save size={16} /> Salvar Preferência
+                <Save size={16} /> Salvar Preferências
               </button>
             </form>
           </div>
