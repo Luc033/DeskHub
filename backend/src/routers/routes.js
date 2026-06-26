@@ -3,6 +3,7 @@ const routes = Router();
 const MessageController = require('../controllers/MessageController');
 const ShortcutController = require('../controllers/ShortcutController');
 const LinkController = require('../controllers/LinkController');
+const QuickLinkController = require('../controllers/QuickLinkController');
 const EmojiController = require('../controllers/EmojiController');
 const AttendanceController = require('../controllers/AttendanceController');
 const KpiController = require('../controllers/KpiController');
@@ -61,6 +62,11 @@ routes.post('/links', LinkController.create);
 routes.get('/links', LinkController.index);
 routes.delete('/links/:id', LinkController.delete);
 routes.put('/links/:id', LinkController.update);
+
+routes.post('/quicklinks', QuickLinkController.create);
+routes.get('/quicklinks', QuickLinkController.index);
+routes.delete('/quicklinks/:id', QuickLinkController.delete);
+routes.put('/quicklinks/:id', QuickLinkController.update);
 
 routes.post('/emojis', EmojiController.create);
 routes.get('/emojis', EmojiController.index);

@@ -23,6 +23,7 @@ model User {
   messages    Message[]
   shortcuts   Shortcut[]
   links       Link[]
+  quickLinks  QuickLink[]
   emojis      Emoji[]
   notes       Note[]
   alerts      Alert[]
@@ -69,6 +70,20 @@ model Link {
 
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+}
+
+model QuickLink {
+  id        String   @id @default(uuid())
+  title     String
+  url       String
+  category  String   @default("Geral")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("quicklinks")
 }
 
 model Emoji {

@@ -3,13 +3,14 @@ import {
   Headphones, LineChart, Settings, MapPin, FileText,
   MessageSquare, Route, Link as LinkIcon, Smile, ChevronDown,
   PlusCircle, Search, X, CheckCircle2, LogOut, Moon, Sun,
-  BookOpen, Bell, AlertTriangle, Info, AlarmClock, Megaphone, Terminal, Tags
+  BookOpen, Bell, AlertTriangle, Info, AlarmClock, Megaphone, Terminal, Tags, Bookmark
 } from "lucide-react";
 
 import logo from "./assets/logo.ico";
 import Messages from "./Messages";
 import Shortcuts from "./Shortcuts";
 import Links from "./Links";
+import QuickLinks from "./QuickLinks";
 import Emojis from "./Emojis";
 import Categories from "./Categories";
 import Attendances from "./Attendances";
@@ -222,6 +223,7 @@ function App() {
 
   const navigation = [
     { name: "Hub", key: "hub", icon: HubIcon },
+    { name: "QuickLinks", key: "quicklinks", icon: Bookmark },
     { name: "Busca CEP", key: "cep", icon: MapPin },
     { name: "Anotacoes", key: "notes", icon: BookOpen },
     { name: "Atendimentos", key: "atendimentos", icon: Headphones },
@@ -584,6 +586,7 @@ function App() {
           {activeMainTab === "hub" && activeHubSubTab === "links" && <Links searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
           {activeMainTab === "hub" && activeHubSubTab === "emojis" && <Emojis searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
           {activeMainTab === "hub" && activeHubSubTab === "categories" && <Categories searchQuery={hubSearchQuery} refreshKey={hubRefreshKey} />}
+          {activeMainTab === "quicklinks" && <QuickLinks />}
           {activeMainTab === "cep" && <Cep />}
           {activeMainTab === "atendimentos" && <Attendances />}
           {activeMainTab === "settings" && <SettingsPage />}
@@ -599,7 +602,7 @@ function App() {
             />
           )}
           {activeMainTab === "kpi" && <Kpi />}
-          {activeMainTab !== "hub" && activeMainTab !== "atendimentos" && activeMainTab !== "cep" && activeMainTab !== "settings" && activeMainTab !== "leitor" && activeMainTab !== "notes" && activeMainTab !== "kpi" && (
+          {activeMainTab !== "hub" && activeMainTab !== "quicklinks" && activeMainTab !== "atendimentos" && activeMainTab !== "cep" && activeMainTab !== "settings" && activeMainTab !== "leitor" && activeMainTab !== "notes" && activeMainTab !== "kpi" && (
             <div className="text-center py-12 text-slate-500">Modulo {activeMainTab} em construcao.</div>
           )}
         </div>
