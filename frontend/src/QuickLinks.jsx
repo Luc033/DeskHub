@@ -20,6 +20,15 @@ export default function QuickLinks() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // ===== Abre a URL em uma nova aba de forma deterministica =====
+  // Nao depende do atributo target="_blank" sobreviver no DOM. O href e
+  // mantido nos <a> para acessibilidade, clique do meio e Ctrl+clique.
+  const abrirNovaAba = (e, url) => {
+    e.preventDefault();
+    if (!url) return;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   // ===== READ: busca todos os QuickLinks do usuario logado =====
   const fetchQuickLinks = async () => {
     try {
@@ -190,6 +199,7 @@ export default function QuickLinks() {
                 {/* Abrir em nova aba ao clicar no titulo */}
                 <a
                   href={q.url}
+                  onClick={(e) => abrirNovaAba(e, q.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-bold text-emerald-700 hover:text-emerald-500 flex items-center gap-2 transition-colors text-base dark:text-emerald-400 dark:hover:text-emerald-300 min-w-0"
@@ -218,6 +228,7 @@ export default function QuickLinks() {
 
               <a
                 href={q.url}
+                onClick={(e) => abrirNovaAba(e, q.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-slate-400 truncate hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
@@ -232,6 +243,7 @@ export default function QuickLinks() {
                 </span>
                 <a
                   href={q.url}
+                  onClick={(e) => abrirNovaAba(e, q.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-emerald-600 transition-colors dark:text-slate-400 dark:hover:text-emerald-400"
