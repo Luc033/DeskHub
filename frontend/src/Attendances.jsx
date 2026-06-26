@@ -30,46 +30,55 @@ import { attendanceDraftStorage } from "./lib/attendanceDraftStorage";
 import { AuthContext } from "./contexts/AuthContext";
 
 // ================= FUNÇÕES UTILITÁRIAS =================
+// CNPJ alfanumérico (Receita Federal, vigência jul/2026): as 12 primeiras
+// posições aceitam letras (A-Z) e números (0-9); os 2 dígitos verificadores
+// (DV) continuam numéricos. O formato 100% numérico legado segue válido.
+const CNPJ_FORMAT_REGEX = /^[0-9A-Z]{12}[0-9]{2}$/;
+// Pesos do módulo 11 para o 1º e o 2º dígito verificador.
+const CNPJ_WEIGHTS_DV1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+const CNPJ_WEIGHTS_DV2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+// Remove máscara/espaços e padroniza em maiúsculas (CNPJ é identificador textual).
+const normalizeCNPJ = (value) =>
+  (value || "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+
+// Valor de cálculo do caractere = código ASCII - 48.
+// Assim, "0"-"9" (ASCII 48-57) viram 0-9 e "A"-"Z" (ASCII 65-90) viram 17-42.
+const cnpjCharValue = (char) => char.charCodeAt(0) - 48;
+
+// Calcula um dígito verificador via módulo 11 sobre a base informada.
+const calcCNPJDigit = (base, weights) => {
+  const soma = base
+    .split("")
+    .reduce((acc, char, i) => acc + cnpjCharValue(char) * weights[i], 0);
+  const resto = soma % 11;
+  return resto < 2 ? 0 : 11 - resto;
+};
+
 const isValidCNPJ = (cnpj) => {
   if (!cnpj) return true;
-  const numbers = cnpj.replace(/[^\d]+/g, "");
-  if (numbers.length !== 14) return false;
-  if (/^(\d)\1+$/.test(numbers)) return false;
+  const normalized = normalizeCNPJ(cnpj);
+  if (!CNPJ_FORMAT_REGEX.test(normalized)) return false;
+  // Rejeita sequências de caracteres repetidos (ex.: 00000000000000).
+  if (/^(.)\1+$/.test(normalized)) return false;
 
-  let tamanho = numbers.length - 2;
-  let numerosBase = numbers.substring(0, tamanho);
-  let digitos = numbers.substring(tamanho);
-  let soma = 0;
-  let pos = tamanho - 7;
-  for (let i = tamanho; i >= 1; i--) {
-    soma += numerosBase.charAt(tamanho - i) * pos--;
-    if (pos < 2) pos = 9;
-  }
-  let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-  if (resultado != digitos.charAt(0)) return false;
-
-  tamanho = tamanho + 1;
-  numerosBase = numbers.substring(0, tamanho);
-  soma = 0;
-  pos = tamanho - 7;
-  for (let i = tamanho; i >= 1; i--) {
-    soma += numerosBase.charAt(tamanho - i) * pos--;
-    if (pos < 2) pos = 9;
-  }
-  resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-  if (resultado != digitos.charAt(1)) return false;
-
-  return true;
+  const base = normalized.substring(0, 12);
+  const dv1 = calcCNPJDigit(base, CNPJ_WEIGHTS_DV1);
+  const dv2 = calcCNPJDigit(`${base}${dv1}`, CNPJ_WEIGHTS_DV2);
+  return normalized.substring(12) === `${dv1}${dv2}`;
 };
 
 const maskCNPJ = (value) => {
   if (!value) return "";
-  let v = value.replace(/\D/g, "");
-  if (v.length > 14) v = v.substring(0, 14);
-  v = v.replace(/^(\d{2})(\d)/, "$1.$2");
-  v = v.replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3");
-  v = v.replace(/\.(\d{3})(\d)/, ".$1/$2");
-  v = v.replace(/(\d{4})(\d)/, "$1-$2");
+  // 12 primeiras posições aceitam letras e números; as 2 últimas (DV) só números.
+  const normalized = normalizeCNPJ(value);
+  const base = normalized.substring(0, 12);
+  const dv = normalized.substring(12, 14).replace(/\D/g, "");
+  let v = base + dv;
+  v = v.replace(/^([0-9A-Z]{2})([0-9A-Z])/, "$1.$2");
+  v = v.replace(/^([0-9A-Z]{2})\.([0-9A-Z]{3})([0-9A-Z])/, "$1.$2.$3");
+  v = v.replace(/\.([0-9A-Z]{3})([0-9A-Z])/, ".$1/$2");
+  v = v.replace(/([0-9A-Z]{4})([0-9A-Z])/, "$1-$2");
   return v;
 };
 
@@ -415,11 +424,11 @@ export default function Attendances() {
   useEffect(() => {
     const fetchCompany = async () => {
       if (!form.cnpj) return;
-      const cnpjNumbers = form.cnpj.replace(/\D/g, "");
-      if (cnpjNumbers.length === 14 && isValidCNPJ(form.cnpj)) {
+      const cnpjNormalized = normalizeCNPJ(form.cnpj);
+      if (cnpjNormalized.length === 14 && isValidCNPJ(form.cnpj)) {
         try {
           const response = await fetch(
-            `https://brasilapi.com.br/api/cnpj/v1/${cnpjNumbers}`,
+            `https://brasilapi.com.br/api/cnpj/v1/${cnpjNormalized}`,
           );
           if (response.ok) {
             const data = await response.json();
