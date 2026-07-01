@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Search, PlusCircle, Trash2, Pencil, CheckCircle2, ExternalLink,
-  Link as LinkIcon, X, Save, Tag
+  Link as LinkIcon, X, Save, Tag, Star
 } from 'lucide-react';
 
 const emptyForm = { id: null, title: '', url: '', category: '' };
@@ -89,6 +89,30 @@ export default function QuickLinks() {
     }
   };
 
+  // ===== FAVORITE: alterna o status de favorito (atualizacao otimista) =====
+  const handleToggleFavorite = async (item) => {
+    const novoValor = !item.favorite;
+    setQuickLinks((prev) =>
+      prev.map((q) => (q.id === item.id ? { ...q, favorite: novoValor } : q))
+    );
+    try {
+      const res = await fetch(`/api/quicklinks/${item.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ favorite: novoValor }),
+      });
+      if (!res.ok) throw new Error('Falha ao favoritar');
+      const saved = await res.json();
+      setQuickLinks((prev) => prev.map((q) => (q.id === saved.id ? saved : q)));
+    } catch (error) {
+      console.error('Erro ao favoritar:', error);
+      setQuickLinks((prev) =>
+        prev.map((q) => (q.id === item.id ? { ...q, favorite: item.favorite } : q))
+      );
+      showToast('Erro ao atualizar favorito.');
+    }
+  };
+
   // ===== DELETE: remove um link =====
   const handleDelete = async (id) => {
     if (!window.confirm('Tem certeza que deseja excluir este link?')) return;
@@ -113,13 +137,13 @@ export default function QuickLinks() {
     setIsModalOpen(true);
   };
 
-  // Lista unica de categorias para os "chips" de filtro
+  // Chips de filtro: "Todas", "Favoritos" e as categorias existentes
   const categories = useMemo(() => {
     const set = new Set(quickLinks.map((q) => q.category || 'Geral'));
-    return ['Todas', ...Array.from(set).sort()];
+    return ['Todas', 'Favoritos', ...Array.from(set).sort()];
   }, [quickLinks]);
 
-  // Filtro por texto (titulo OU categoria) + filtro pelo chip de categoria ativo
+  // Filtro por texto (titulo OU categoria) + filtro pelo chip ativo
   const filtered = useMemo(() => {
     const term = searchQuery.toLowerCase();
     return quickLinks.filter((q) => {
@@ -127,9 +151,13 @@ export default function QuickLinks() {
         (q.title || '').toLowerCase().includes(term) ||
         (q.category || '').toLowerCase().includes(term) ||
         (q.url || '').toLowerCase().includes(term);
-      const matchesCategory =
-        activeCategory === 'Todas' || (q.category || 'Geral') === activeCategory;
-      return matchesText && matchesCategory;
+      const matchesFilter =
+        activeCategory === 'Todas'
+          ? true
+          : activeCategory === 'Favoritos'
+            ? q.favorite
+            : (q.category || 'Geral') === activeCategory;
+      return matchesText && matchesFilter;
     });
   }, [quickLinks, searchQuery, activeCategory]);
 
@@ -171,12 +199,20 @@ export default function QuickLinks() {
               key={cat}
               onClick={() => setActiveCategory(cat)}
               className={
-                'px-3 py-1.5 rounded-full text-xs font-bold transition-all border ' +
+                'px-3 py-1.5 rounded-full text-xs font-bold transition-all border inline-flex items-center gap-1 ' +
                 (activeCategory === cat
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 dark:hover:bg-slate-700')
               }
             >
+              {cat === 'Favoritos' && (
+                <Star
+                  className={
+                    'h-3.5 w-3.5 ' +
+                    (activeCategory === cat ? 'fill-white' : 'fill-amber-400 text-amber-400')
+                  }
+                />
+              )}
               {cat}
             </button>
           ))}
@@ -208,21 +244,35 @@ export default function QuickLinks() {
                   <LinkIcon className="h-4 w-4 shrink-0" />
                   <span className="truncate">{q.title}</span>
                 </a>
-                <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex gap-1 shrink-0 items-center">
                   <button
-                    onClick={() => openEditModal(q)}
-                    className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors dark:hover:bg-slate-700/50 dark:hover:text-blue-400"
-                    title="Editar"
+                    onClick={() => handleToggleFavorite(q)}
+                    className={
+                      'p-1.5 rounded-lg transition-colors ' +
+                      (q.favorite
+                        ? 'text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10'
+                        : 'text-slate-300 hover:text-amber-400 hover:bg-amber-50 dark:text-slate-600 dark:hover:text-amber-400 dark:hover:bg-amber-500/10')
+                    }
+                    title={q.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                   >
-                    <Pencil className="h-4 w-4" />
+                    <Star className={'h-4 w-4 ' + (q.favorite ? 'fill-amber-400' : '')} />
                   </button>
-                  <button
-                    onClick={() => handleDelete(q.id)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors dark:hover:bg-red-950/30 dark:hover:text-red-400"
-                    title="Excluir"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openEditModal(q)}
+                      className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors dark:hover:bg-slate-700/50 dark:hover:text-blue-400"
+                      title="Editar"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(q.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                      title="Excluir"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
