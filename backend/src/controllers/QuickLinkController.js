@@ -16,12 +16,13 @@ module.exports = {
 
   async create(req, res) {
     try {
-      const { title, url, category } = req.body;
+      const { title, url, category, favorite } = req.body;
       const quickLink = await prisma.quickLink.create({
         data: {
           title,
           url,
           category: category || 'Geral',
+          favorite: Boolean(favorite),
           userId: req.userId
         }
       });
@@ -35,10 +36,15 @@ module.exports = {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const { title, url, category } = req.body;
+      const { title, url, category, favorite } = req.body;
+      const data = {};
+      if (title !== undefined) data.title = title;
+      if (url !== undefined) data.url = url;
+      if (category !== undefined) data.category = category;
+      if (favorite !== undefined) data.favorite = Boolean(favorite);
       await prisma.quickLink.updateMany({
         where: { id, userId: req.userId },
-        data: { title, url, category }
+        data
       });
       const updated = await prisma.quickLink.findFirst({
         where: { id, userId: req.userId }
