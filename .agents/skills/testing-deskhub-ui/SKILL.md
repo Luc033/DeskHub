@@ -42,6 +42,16 @@ DeskHub = Node.js/Express + Prisma + PostgreSQL backend, React (Vite) + Tailwind
 - Dark mode toggle lives in the profile dropdown (top-right) as "Modo Escuro".
 - Toasts confirm CRUD: "Link criado/atualizado com sucesso!", "Link excluido!".
 
+## CNPJ field (Atendimentos → Novo modal)
+- Reach it: **Atendimentos** tab → **Novo** button → modal. CNPJ `<input>` lives in `frontend/src/Attendances.jsx`.
+- onChange applies `maskCNPJ`; container border + trailing icon reflect `isValidCNPJ` (green border + CheckCircle2 = valid; red border + AlertTriangle = invalid). Empty field is treated as valid (no icon).
+- Reusable test values (validated against the module-11 alphanumeric algorithm):
+  - Valid alphanumeric: `12ABC34501DE35` → masks to `12.ABC.345/01DE-35` (letters must be preserved, not stripped).
+  - Invalid DV: `12ABC34501DE34` → red/invalid (proves the DV math runs).
+  - Valid legacy numeric (regression): `11222333000181` → `11.222.333/0001-81`.
+- Typing a fully valid CNPJ also triggers a BrasilAPI lookup that fills the razão social — a good end-to-end signal that normalization works in the fetch path too (needs network; may be flaky offline).
+- The modal auto-persists a draft attendance card showing the masked CNPJ, so you can confirm the value reached the backend without submitting.
+
 ## Reporting
 - Post ONE PR comment with a T# results table, `<details>` sections (T6/open-in-new-tab caveat + escalations), inline screenshots (the `git_comment_on_pr` tool auto-uploads local image paths), recording link, and the Devin session link.
 - Be conservative: if any step deviated, report it as a failure/red flag, and distinguish pre-existing issues from feature defects.
