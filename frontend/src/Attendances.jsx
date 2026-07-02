@@ -958,6 +958,16 @@ export default function Attendances() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
+      // Recarrega a lista recém-alterada para que o popover de atalhos
+      // (< / & : ) e os dropdowns da barra reflitam o novo cadastro.
+      const hubKey = endpoint.replace("/", "");
+      const res = await fetch(`/api${endpoint}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setHubData((prev) => ({ ...prev, [hubKey]: data }));
+      }
+
       setIsQuickAddOpen(false);
       setQuickAddForm({
         type: quickAddForm.type,
