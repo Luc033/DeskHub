@@ -112,6 +112,7 @@ export default function Attendances() {
   const [toast, setToast] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [localTab, setLocalTab] = useState("phone");
 
   const [missedCalls, setMissedCalls] = useState(
@@ -283,8 +284,13 @@ export default function Attendances() {
   });
 
   const isCreatingRef = useRef(false);
+  const editingIdRef = useRef(null);
   const timerRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  useEffect(() => {
+    editingIdRef.current = editingId;
+  }, [editingId]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -503,12 +509,14 @@ export default function Attendances() {
     abortControllerRef.current = new AbortController();
 
     timerRef.current = setTimeout(async () => {
-      // Salva rascunho periodicamente enquanto está digitando
-      attendanceDraftStorage.saveDraft(form, editingId);
+      const currentId = editingId || editingIdRef.current;
 
-      if (editingId) {
+      // Salva rascunho periodicamente enquanto está digitando
+      attendanceDraftStorage.saveDraft(form, currentId);
+
+      if (currentId) {
         try {
-          const res = await apiCall(`/api/attendances/${editingId}`, {
+          const res = await apiCall(`/api/attendances/${currentId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(form),
@@ -517,7 +525,7 @@ export default function Attendances() {
 
           if (res.ok) {
             setAttendances((prev) =>
-              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
+              prev.map((a) => (a.id === currentId ? { ...a, ...form } : a)),
             );
             // Limpa rascunho se o auto-save foi bem-sucedido
             attendanceDraftStorage.clearDraft();
@@ -545,6 +553,9 @@ export default function Attendances() {
 
           if (res.ok) {
             const novo = await res.json();
+            // Marca o id de forma síncrona para evitar duplicação
+            // enquanto o setEditingId assíncrono ainda não propagou.
+            editingIdRef.current = novo.id;
             setEditingId(novo.id);
 
             setAttendances((prev) => [
@@ -605,95 +616,107 @@ export default function Attendances() {
       notes: "",
       category: "Outros",
     });
+    editingIdRef.current = null;
     setEditingId(null);
     setIsModalOpen(true);
   };
 
   const handleCloseModal = async () => {
+    if (isSubmitting) return;
     clearTimeout(timerRef.current);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
+    const idToUse = editingId || editingIdRef.current;
+
     // Salva rascunho antes de tentar enviar
-    attendanceDraftStorage.saveDraft(form, editingId);
+    attendanceDraftStorage.saveDraft(form, idToUse);
 
-    if (editingId) {
-      const currentAtt = attendances.find((a) => a.id === editingId);
-      if (currentAtt?.status === "in_progress") {
-        try {
-          const res = await apiCall(`/api/attendances/${editingId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(form),
-          });
-          if (res.ok) {
-            setAttendances((prev) =>
-              prev.map((a) => (a.id === editingId ? { ...a, ...form } : a)),
-            );
-            // Remove rascunho apenas se salvou com sucesso
-            attendanceDraftStorage.clearDraft();
-          }
-        } catch (e) {
-          console.error('Erro ao salvar atendimento:', e);
-          showToast('Erro ao salvar. Rascunho foi preservado.');
-          return;
-        }
-      }
-    } else {
-      if (!isCreatingRef.current) {
-        isCreatingRef.current = true;
-        try {
-          const res = await apiCall(`/api/attendances`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              ...form,
-              type: localTab,
-              status: "in_progress",
-            }),
-          });
-          if (res.ok) {
-            const novo = await res.json();
-            setAttendances((prev) => [
-              { ...novo, type: localTab, status: "in_progress" },
-              ...prev,
-            ]);
-            // Remove rascunho apenas se salvou com sucesso
-            attendanceDraftStorage.clearDraft();
-          }
-        } catch (e) {
-          console.error('Erro ao criar atendimento:', e);
-          showToast('Erro ao criar. Rascunho foi preservado.');
-          isCreatingRef.current = false;
-          return;
-        } finally {
-          isCreatingRef.current = false;
-        }
-      }
-    }
-
+    setIsSubmitting(true);
     try {
-      await reloadAttendances();
-    } catch (e) {
-      console.error('Erro ao recarregar:', e);
+      if (idToUse) {
+        const currentAtt = attendances.find((a) => a.id === idToUse);
+        if (currentAtt?.status === "in_progress") {
+          try {
+            const res = await apiCall(`/api/attendances/${idToUse}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(form),
+            });
+            if (res.ok) {
+              setAttendances((prev) =>
+                prev.map((a) => (a.id === idToUse ? { ...a, ...form } : a)),
+              );
+              // Remove rascunho apenas se salvou com sucesso
+              attendanceDraftStorage.clearDraft();
+            }
+          } catch (e) {
+            console.error('Erro ao salvar atendimento:', e);
+            showToast('Erro ao salvar. Rascunho foi preservado.');
+            return;
+          }
+        }
+      } else {
+        if (!isCreatingRef.current) {
+          isCreatingRef.current = true;
+          try {
+            const res = await apiCall(`/api/attendances`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...form,
+                type: localTab,
+                status: "in_progress",
+              }),
+            });
+            if (res.ok) {
+              const novo = await res.json();
+              editingIdRef.current = novo.id;
+              setAttendances((prev) => [
+                { ...novo, type: localTab, status: "in_progress" },
+                ...prev,
+              ]);
+              // Remove rascunho apenas se salvou com sucesso
+              attendanceDraftStorage.clearDraft();
+            }
+          } catch (e) {
+            console.error('Erro ao criar atendimento:', e);
+            showToast('Erro ao criar. Rascunho foi preservado.');
+            return;
+          } finally {
+            isCreatingRef.current = false;
+          }
+        }
+      }
+
+      try {
+        await reloadAttendances();
+      } catch (e) {
+        console.error('Erro ao recarregar:', e);
+      }
+      setIsModalOpen(false);
+      setEditingId(null);
+      editingIdRef.current = null;
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsModalOpen(false);
-    setEditingId(null);
   };
 
   const handleFinalize = async (e) => {
     if (e) e.preventDefault();
+    if (isSubmitting) return;
     clearTimeout(timerRef.current);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
+    setIsSubmitting(true);
     try {
       // Salva rascunho antes de tentar finalizar
-      attendanceDraftStorage.saveDraft(form, editingId);
+      attendanceDraftStorage.saveDraft(form, editingId || editingIdRef.current);
 
-      let idToFinalize = editingId;
+      let idToFinalize = editingId || editingIdRef.current;
 
       if (!idToFinalize) {
         if (isCreatingRef.current) {
@@ -702,19 +725,23 @@ export default function Attendances() {
         }
 
         isCreatingRef.current = true;
-        const resCreate = await apiCall(`/api/attendances`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...form,
-            type: localTab,
-            status: "in_progress",
-          }),
-        });
-        if (!resCreate.ok) throw new Error('Erro ao criar atendimento');
-        const novo = await resCreate.json();
-        idToFinalize = novo.id;
-        isCreatingRef.current = false;
+        try {
+          const resCreate = await apiCall(`/api/attendances`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...form,
+              type: localTab,
+              status: "in_progress",
+            }),
+          });
+          if (!resCreate.ok) throw new Error('Erro ao criar atendimento');
+          const novo = await resCreate.json();
+          idToFinalize = novo.id;
+          editingIdRef.current = novo.id;
+        } finally {
+          isCreatingRef.current = false;
+        }
       }
 
       const response = await apiCall(
@@ -737,12 +764,14 @@ export default function Attendances() {
       await reloadAttendances();
       setIsModalOpen(false);
       setEditingId(null);
+      editingIdRef.current = null;
       copyToClipboard(form.tratativa, false);
       showToast("Atendimento finalizado e tratativa copiada!");
     } catch (error) {
       console.error('Erro ao finalizar:', error);
       showToast('Erro ao finalizar. Rascunho foi preservado.');
-      isCreatingRef.current = false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1209,7 +1238,8 @@ export default function Attendances() {
               </div>
               <button
                 onClick={handleCloseModal}
-                className="text-slate-500 hover:text-slate-800 hover:bg-slate-200 px-4 py-2 rounded-xl transition-colors shrink-0 font-semibold text-sm dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                disabled={isSubmitting}
+                className="text-slate-500 hover:text-slate-800 hover:bg-slate-200 px-4 py-2 rounded-xl transition-colors shrink-0 font-semibold text-sm dark:hover:bg-slate-800 dark:hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Fechar
               </button>
@@ -1561,9 +1591,10 @@ export default function Attendances() {
                 <button
                   type="submit"
                   form="attendance-form"
-                  className="px-6 py-2.5 rounded-xl font-bold text-white bg-[#175676] hover:bg-[#12435c] flex items-center gap-2 shadow-sm transition-colors text-sm dark:bg-[#1FA697] dark:hover:bg-[#188075]"
+                  disabled={isSubmitting}
+                  className="px-6 py-2.5 rounded-xl font-bold text-white bg-[#175676] hover:bg-[#12435c] flex items-center gap-2 shadow-sm transition-colors text-sm dark:bg-[#1FA697] dark:hover:bg-[#188075] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <CheckCircle size={18} /> Finalizar
+                  <CheckCircle size={18} /> {isSubmitting ? "Finalizando..." : "Finalizar"}
                 </button>
               )}
             </div>
